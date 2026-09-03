@@ -3,13 +3,15 @@ const MODELO_AUDIO_PADRAO = "whisper-large-v3-turbo";
 const TAMANHO_MAXIMO_BYTES = 20 * 1024 * 1024;
 const DURACAO_MAXIMA_SEGUNDOS = 5 * 60;
 
+const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function obterChave() {
   return String(process.env.GROQ_API_KEY || "").trim();
 }
 
 function ehMensagemDeAudio(msg) {
   const tipo = String(msg?.type || "").toLowerCase();
-  return (tipo === "audio" || tipo === "ptt") && msg?.hasMedia !== false;
+  return tipo === "audio" || tipo === "ptt";
 }
 
 function limparBase64(valor = "") {
@@ -38,6 +40,63 @@ function extensaoPorMime(mimetype = "") {
     "audio/aac": "aac",
   };
   return mapa[mime] || "ogg";
+}
+
+function idsMensagem(msg) {
+  const candidatos = [
+    msg?.id?._serialized,
+    typeof msg?.id === "string" ? msg.id : null,
+    msg?._serialized,
+  ].filter(Boolean);
+  return [...new Set(candidatos)];
+}
+
+async function tentarDownload(client, alvo) {
+  try {
+    const base64 = await client.downloadMedia(alvo);
+    const limpo = limparBase64(base64);
+    if (limpo) return limpo;
+  } catch (error) {
+    console.warn("⚠️ Tentativa de download de áudio falhou:", error?.message || error);
+  }
+  return null;
+}
+
+async function baixarAudioComRetry(client, msg) {
+  const ids = idsMensagem(msg);
+  const tentativas = [0, 700, 1500, 2500];
+
+  for (const esperaMs of tentativas) {
+    if (esperaMs) await esperar(esperaMs);
+
+    // Primeiro tenta pelo próprio objeto Message.
+    let base64 = await tentarDownload(client, msg);
+    if (base64) return base64;
+
+    // Depois tenta pelos IDs serializados conhecidos.
+    for (const id of ids) {
+      base64 = await tentarDownload(client, id);
+      if (base64) return base64;
+    }
+
+    // Em versões do WPPConnect em que o objeto inicial ainda não contém a mídia,
+    // busca a mensagem novamente antes de baixar.
+    if (typeof client.getMessageById === "function") {
+      for (const id of ids) {
+        try {
+          const atualizada = await client.getMessageById(id);
+          if (atualizada) {
+            base64 = await tentarDownload(client, atualizada);
+            if (base64) return base64;
+          }
+        } catch (error) {
+          console.warn("⚠️ Não foi possível recarregar a mensagem de áudio:", error?.message || error);
+        }
+      }
+    }
+  }
+
+  throw new Error("Mídia de áudio indisponível após novas tentativas");
 }
 
 async function enviarParaWhisper(buffer, mimetype) {
@@ -130,11 +189,8 @@ async function transcreverAudioWhatsApp(client, msg) {
   }
 
   try {
-    const base64 = await client.downloadMedia(msg);
-    const limpo = limparBase64(base64);
-    if (!limpo) throw new Error("Mídia vazia");
-
-    const buffer = Buffer.from(limpo, "base64");
+    const base64 = await baixarAudioComRetry(client, msg);
+    const buffer = Buffer.from(base64, "base64");
     if (!buffer.length) throw new Error("Áudio vazio após decodificação");
 
     if (buffer.length > TAMANHO_MAXIMO_BYTES) {
@@ -149,7 +205,7 @@ async function transcreverAudioWhatsApp(client, msg) {
     console.warn("⚠️ Não foi possível baixar o áudio do WhatsApp:", error?.message || error);
     return {
       ok: false,
-      mensagem: "🎤 Não consegui baixar esse áudio. Pode tentar enviar novamente ou escrever a mensagem? 😊",
+      mensagem: "🎤 Não consegui acessar esse áudio agora. Pode tentar enviar novamente ou escrever a mensagem? 😊",
     };
   }
 }
