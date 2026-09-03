@@ -10,24 +10,80 @@ const crypto = require("crypto");
 // =====================================
 // TEXTOS E VALORES EDITÁVEIS
 // =====================================
+const WHATSAPP_SECRETARIA_SHEKINAH = "5592993977312@c.us";
+
+const CURSOS_UNIFATECIE = {
+  "1": {
+    emoji: "🎓",
+    nome: "Pedagogia",
+    formacao: "Licenciatura",
+    duracao: "4 anos",
+    mensalidade: "R$ 112,20",
+    estagio: "Possui estágio obrigatório",
+  },
+  "2": {
+    emoji: "💻",
+    nome: "Análise e Desenvolvimento de Sistemas",
+    formacao: "Tecnólogo",
+    duracao: "2 anos",
+    mensalidade: "R$ 112,20",
+    estagio: "Sem estágio obrigatório",
+  },
+  "3": {
+    emoji: "👥",
+    nome: "Gestão de Recursos Humanos",
+    formacao: "Tecnólogo",
+    duracao: "1 ano e 6 meses",
+    mensalidade: "R$ 112,20",
+    estagio: "Sem estágio obrigatório",
+  },
+  "4": {
+    emoji: "💰",
+    nome: "Gestão Financeira",
+    formacao: "Tecnólogo",
+    duracao: "1 ano e 6 meses",
+    mensalidade: "R$ 112,20",
+    estagio: "Sem estágio obrigatório",
+  },
+  "5": {
+    emoji: "📦",
+    nome: "Logística",
+    formacao: "Tecnólogo",
+    duracao: "1 ano e 6 meses",
+    mensalidade: "R$ 112,20",
+    estagio: "Sem estágio obrigatório",
+  },
+  "6": {
+    emoji: "📈",
+    nome: "Processos Gerenciais",
+    formacao: "Tecnólogo",
+    duracao: "1 ano e 6 meses",
+    mensalidade: "R$ 112,20",
+    estagio: "Sem estágio obrigatório",
+  },
+  "7": {
+    emoji: "🖥️",
+    nome: "Sistemas para Internet",
+    formacao: "Tecnólogo",
+    duracao: "2 anos",
+    mensalidade: "R$ 112,20",
+    estagio: "Sem estágio obrigatório",
+  },
+  "8": {
+    emoji: "👗",
+    nome: "Design de Moda",
+    formacao: "Tecnólogo",
+    duracao: "1 ano e 6 meses",
+    mensalidade: "R$ 112,20",
+    estagio: "Sem estágio obrigatório",
+  },
+};
+
 const CONFIG = {
   nomeAtendimento: "Atendimento UniFatecie e Centro Educacional Shekinah",
 
   unifatecie: {
     nome: "UniFatecie — Polo Barreirinha",
-    cursos:
-      "🎓 *CURSOS E VALORES — UNIFATECIE*\n\n" +
-      "Estude de onde estiver com cursos de graduação *100% EAD*. Temos opções como:\n\n" +
-      "📘 Pedagogia\n" +
-      "📊 Administração\n" +
-      "💻 Análise e Desenvolvimento de Sistemas\n" +
-      "🧑‍💻 Engenharia de Software\n" +
-      "💰 Gestão Financeira\n" +
-      "🎓 Além de diversas licenciaturas, bacharelados e tecnólogos.\n\n" +
-      "💵 Mensalidades a partir de *R$ 112,20*.\n" +
-      "O valor pode variar conforme o curso e a campanha vigente.\n\n" +
-      "⚠️ *ATENÇÃO:* cursos da área da Saúde não podem ser oferecidos em nosso Polo de Barreirinha.\n\n" +
-      "Quer consultar a disponibilidade de um curso e iniciar sua matrícula? Digite *2*.",
   },
 
   shekinah: {
@@ -430,15 +486,51 @@ function menuInicial() {
 }
 
 function menuInstituicao(instituicao) {
+  const opcaoAtendimento =
+    instituicao === "shekinah"
+      ? "4️⃣ Falar com a secretaria\n\n"
+      : "4️⃣ Falar com um atendente\n\n";
+
   return (
     `Você está no atendimento: *${CONFIG[instituicao].nome}* ✅\n\n` +
     "Escolha uma opção:\n\n" +
     "1️⃣ Cursos e valores\n" +
     "2️⃣ Matrícula\n" +
     "3️⃣ Financeiro e mensalidades\n" +
-    "4️⃣ Falar com um atendente\n\n" +
+    opcaoAtendimento +
     "0️⃣ Trocar de instituição\n\n" +
     "Digite apenas o número da opção."
+  );
+}
+
+function menuCursosUnifatecie() {
+  const lista = Object.entries(CURSOS_UNIFATECIE)
+    .map(([numero, curso]) => `${numero}️⃣ ${curso.emoji} ${curso.nome}`)
+    .join("\n");
+
+  return (
+    "🎓 *CURSOS MAIS PROCURADOS — UNIFATECIE*\n\n" +
+    "Estas são as opções mais procuradas que podem ser ofertadas em nosso Polo de Barreirinha:\n\n" +
+    `${lista}\n\n` +
+    "📌 *Pedagogia é o único curso desta lista que possui estágio obrigatório.*\n" +
+    "✅ Os demais não possuem estágio obrigatório.\n\n" +
+    "⚠️ Cursos da área da Saúde não podem ser oferecidos em nosso polo.\n\n" +
+    "Digite o *número do curso* para ver os detalhes ou *voltar* para retornar ao menu."
+  );
+}
+
+function detalhesCursoUnifatecie(curso) {
+  const iconeEstagio = curso.nome === "Pedagogia" ? "📚" : "✅";
+
+  return (
+    `${curso.emoji} *${curso.nome.toUpperCase()}*\n\n` +
+    `🎓 Formação: *${curso.formacao}*\n` +
+    `⏳ Duração: *${curso.duracao}*\n` +
+    `💵 Mensalidade: *${curso.mensalidade}/mês*\n` +
+    `${iconeEstagio} Estágio: *${curso.estagio}*\n\n` +
+    "O valor pode variar conforme a campanha vigente.\n\n" +
+    "Para começar a pré-matrícula, digite *matrícula*.\n" +
+    "Para escolher outro curso, digite *cursos*."
   );
 }
 
@@ -478,6 +570,39 @@ async function responder(client, destino, mensagem) {
   }
 
   console.log(`✅ Resposta enviada para ${destinoResolvido}.`);
+}
+
+async function encaminharParaSecretariaShekinah(client, msg, sessao, problema) {
+  const d = sessao.dados;
+  const mensagemSecretaria =
+    "🔔 *NOVO ATENDIMENTO — SHEKINAH*\n\n" +
+    `👤 Nome: ${d.secretariaNome}\n` +
+    `📱 Telefone/WhatsApp: ${d.secretariaTelefone}\n` +
+    `📝 Solicitação: ${problema}\n\n` +
+    "Por favor, entre em contato com essa pessoa para continuar o atendimento.";
+
+  try {
+    await responder(client, WHATSAPP_SECRETARIA_SHEKINAH, mensagemSecretaria);
+    sessao.atendimentoHumano = true;
+    sessao.etapa = "atendimento_humano";
+    await responder(
+      client,
+      msg.from,
+      "✅ *SOLICITAÇÃO ENCAMINHADA*\n\n" +
+        "Enviei seus dados e a descrição do problema para a secretaria da Shekinah.\n" +
+        "Ela entrará em contato pelo telefone informado assim que estiver disponível.\n\n" +
+        "Para voltar ao atendimento automático, digite *menu*."
+    );
+  } catch (error) {
+    console.error("❌ Não foi possível avisar a secretaria da Shekinah:", error);
+    await responder(
+      client,
+      msg.from,
+      "⚠️ Não consegui encaminhar sua solicitação automaticamente neste momento.\n\n" +
+        "Fale diretamente com a secretaria pelo WhatsApp: https://wa.me/5592993977312\n\n" +
+        "Para voltar ao atendimento automático, digite *menu*."
+    );
+  }
 }
 
 async function processarMatriculaUnifatecie(client, msg, textoOriginal, sessao) {
@@ -859,6 +984,99 @@ async function processarMensagem(client, msg) {
       return;
     }
 
+    if (sessao.etapa === "unifatecie_cursos") {
+      if (texto === "voltar") {
+        sessao.etapa = "menu_instituicao";
+        await responder(client, msg.from, menuInstituicao("unifatecie"));
+        return;
+      }
+
+      if (texto === "cursos") {
+        sessao.curso = "";
+        await responder(client, msg.from, menuCursosUnifatecie());
+        return;
+      }
+
+      if (texto === "matricula") {
+        sessao.dados = {};
+        sessao.menorDeIdade = false;
+
+        if (sessao.curso) {
+          sessao.dados.curso = sessao.curso;
+          sessao.etapa = "unifatecie_matricula_nome";
+          await responder(
+            client,
+            msg.from,
+            `📝 *PRÉ-MATRÍCULA — ${sessao.curso.toUpperCase()}*\n\n` +
+              "Vou pedir os dados necessários, um de cada vez. Eles serão usados somente pela secretaria para atender sua matrícula.\n\n" +
+              "Você pode digitar *menu* a qualquer momento para cancelar.\n\n" +
+              "👤 Informe o *nome completo* do aluno."
+          );
+        } else {
+          sessao.etapa = "unifatecie_matricula_curso";
+          await responder(client, msg.from, mensagemPrivacidade("unifatecie"));
+        }
+        return;
+      }
+
+      const curso = CURSOS_UNIFATECIE[texto];
+      if (curso) {
+        sessao.curso = curso.nome;
+        await responder(client, msg.from, detalhesCursoUnifatecie(curso));
+        return;
+      }
+
+      await responder(
+        client,
+        msg.from,
+        "Não encontrei esse curso. Digite um número de *1 a 8*, *voltar* ou *menu*."
+      );
+      return;
+    }
+
+    if (sessao.etapa === "shekinah_secretaria_nome") {
+      if (!nomeValido(textoOriginal)) {
+        await responder(client, msg.from, "Informe seu *nome completo*, com nome e sobrenome.");
+        return;
+      }
+
+      sessao.dados.secretariaNome = textoOriginal;
+      sessao.etapa = "shekinah_secretaria_telefone";
+      await responder(
+        client,
+        msg.from,
+        "📱 Informe um *telefone/WhatsApp com DDD* para a secretaria entrar em contato."
+      );
+      return;
+    }
+
+    if (sessao.etapa === "shekinah_secretaria_telefone") {
+      if (!telefoneValido(textoOriginal)) {
+        await responder(client, msg.from, "Digite um telefone válido com DDD, usando somente números.");
+        return;
+      }
+
+      sessao.dados.secretariaTelefone = somenteNumeros(textoOriginal);
+      sessao.etapa = "shekinah_secretaria_problema";
+      await responder(
+        client,
+        msg.from,
+        "📝 Conte resumidamente qual é o *problema ou dúvida* que deseja resolver.\n\n" +
+          "🔒 Não envie senha, código de acesso ou dados de cartão."
+      );
+      return;
+    }
+
+    if (sessao.etapa === "shekinah_secretaria_problema") {
+      if (!textoDentroDoLimite(textoOriginal, 5, 700)) {
+        await responder(client, msg.from, "Descreva a solicitação em uma mensagem de 5 a 700 caracteres.");
+        return;
+      }
+
+      await encaminharParaSecretariaShekinah(client, msg, sessao, textoOriginal);
+      return;
+    }
+
     if (sessao.etapa === "menu_instituicao") {
       if (texto === "0") {
         sessao.etapa = "escolher_instituicao";
@@ -868,6 +1086,13 @@ async function processarMensagem(client, msg) {
       }
 
       if (texto === "1") {
+        if (sessao.instituicao === "unifatecie") {
+          sessao.etapa = "unifatecie_cursos";
+          sessao.curso = "";
+          await responder(client, msg.from, menuCursosUnifatecie());
+          return;
+        }
+
         await responder(
           client,
           msg.from,
@@ -902,6 +1127,20 @@ async function processarMensagem(client, msg) {
       }
 
       if (texto === "4") {
+        if (sessao.instituicao === "shekinah") {
+          sessao.dados = {};
+          sessao.etapa = "shekinah_secretaria_nome";
+          await responder(
+            client,
+            msg.from,
+            "👩‍💼 *ATENDIMENTO DA SECRETARIA — SHEKINAH*\n\n" +
+              "Vou encaminhar sua solicitação para a secretaria.\n" +
+              "Os dados informados serão usados apenas para este atendimento.\n\n" +
+              "Para começar, informe seu *nome completo*."
+          );
+          return;
+        }
+
         sessao.atendimentoHumano = true;
         sessao.etapa = "atendimento_humano";
         await responder(
