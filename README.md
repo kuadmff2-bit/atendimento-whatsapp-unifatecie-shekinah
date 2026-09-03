@@ -11,7 +11,7 @@ Chatbot de atendimento para um único número de WhatsApp. O cliente escolhe ent
 
 - Node.js 18 ou mais recente;
 - WhatsApp instalado no celular;
-- computador conectado à internet enquanto o robô estiver funcionando.
+- computador conectado à internet enquanto o robô estiver funcionando, ou uma VPS para funcionamento 24 horas.
 
 ## Instalação no Windows
 
@@ -35,6 +35,48 @@ npm start
 ```
 
 Para desligar o robô, pressione `Ctrl + C` no terminal.
+
+## Funcionamento 24 horas na Oracle Cloud
+
+O projeto inclui `Dockerfile` e `compose.yaml` para funcionar em uma VPS Linux, reiniciar automaticamente após falhas e manter a sessão do WhatsApp salva em um volume privado do servidor.
+
+Na Oracle Cloud, crie uma máquina com estas opções:
+
+- imagem: **Ubuntu 24.04**;
+- forma gratuita: **VM.Standard.A1.Flex (Ampere/ARM)**;
+- recursos recomendados para um robô: **1 OCPU e 3 GB de memória**;
+- rede: atribuir um endereço IPv4 público;
+- portas de entrada: somente **SSH (22)** é necessária.
+
+Depois de acessar a máquina por SSH, execute:
+
+```bash
+sudo apt update
+sudo apt install -y docker.io docker-compose-v2 git
+sudo systemctl enable --now docker
+git clone https://github.com/kuadmff2-bit/atendimento-whatsapp-unifatecie-shekinah.git
+cd atendimento-whatsapp-unifatecie-shekinah
+sudo docker compose up -d --build
+sudo docker compose logs -f atendimento-whatsapp
+```
+
+Na primeira inicialização, leia o QR Code exibido nos logs. Depois que aparecer a confirmação de conexão, pressione `Ctrl + C`: isso fecha somente a visualização dos logs e o robô continua funcionando em segundo plano.
+
+Para conferir se ele está ativo:
+
+```bash
+sudo docker compose ps
+```
+
+Para atualizar o robô futuramente:
+
+```bash
+cd atendimento-whatsapp-unifatecie-shekinah
+git pull
+sudo docker compose up -d --build
+```
+
+O volume `atendimento-whatsapp-tokens` guarda a autenticação fora do contêiner. Não execute `docker compose down -v`, pois a opção `-v` apaga esse volume e obriga a conectar o WhatsApp novamente.
 
 ## Erro de tempo esgotado ao abrir o navegador
 

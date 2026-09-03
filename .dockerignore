@@ -1,0 +1,17 @@
+node_modules
+npm-debug.log*
+.git
+.github
+.env
+.env.*
+tokens
+session
+.wppconnect
+.wwebjs_auth
+.wwebjs_cache
+*.zip
+*.png
+*.jpg
+*.jpeg
+*.webp
+README.md

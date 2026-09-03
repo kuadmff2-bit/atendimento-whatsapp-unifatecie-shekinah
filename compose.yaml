@@ -1,0 +1,19 @@
+services:
+  atendimento-whatsapp:
+    build: .
+    container_name: atendimento-whatsapp
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      TZ: America/Manaus
+      CHROME_PATH: /usr/bin/chromium
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+    volumes:
+      - whatsapp_tokens:/app/tokens
+    shm_size: 1gb
+
+volumes:
+  whatsapp_tokens:
+    name: atendimento-whatsapp-tokens

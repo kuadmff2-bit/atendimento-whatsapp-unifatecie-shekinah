@@ -49,33 +49,35 @@ const CONFIG = {
 };
 
 // =====================================
-// NAVEGADOR NO WINDOWS / WINDOWS ARM64
+// NAVEGADOR NO WINDOWS, LINUX E DOCKER
 // =====================================
 const windows = process.platform === "win32";
 
-function encontrarNavegadorWindows() {
-  if (!windows) return null;
-
+function encontrarNavegador() {
   const candidatos = [
     process.env.CHROME_PATH,
-    process.env.LOCALAPPDATA &&
+    windows && process.env.LOCALAPPDATA &&
       path.join(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
-    process.env.PROGRAMFILES &&
+    windows && process.env.PROGRAMFILES &&
       path.join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe"),
-    process.env["PROGRAMFILES(X86)"] &&
+    windows && process.env["PROGRAMFILES(X86)"] &&
       path.join(process.env["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe"),
-    process.env.PROGRAMFILES &&
+    windows && process.env.PROGRAMFILES &&
       path.join(process.env.PROGRAMFILES, "Microsoft", "Edge", "Application", "msedge.exe"),
-    process.env["PROGRAMFILES(X86)"] &&
+    windows && process.env["PROGRAMFILES(X86)"] &&
       path.join(process.env["PROGRAMFILES(X86)"], "Microsoft", "Edge", "Application", "msedge.exe"),
-    process.env.LOCALAPPDATA &&
+    windows && process.env.LOCALAPPDATA &&
       path.join(process.env.LOCALAPPDATA, "Microsoft", "Edge", "Application", "msedge.exe"),
+    !windows && "/usr/bin/chromium",
+    !windows && "/usr/bin/chromium-browser",
+    !windows && "/usr/bin/google-chrome",
+    !windows && "/usr/bin/google-chrome-stable",
   ].filter(Boolean);
 
   return candidatos.find((caminho) => fs.existsSync(caminho)) || null;
 }
 
-const caminhoNavegador = encontrarNavegadorWindows();
+const caminhoNavegador = encontrarNavegador();
 
 // =====================================
 // SESSÕES DO ATENDIMENTO
@@ -851,6 +853,8 @@ async function iniciar() {
       waitForLogin: true,
       disableWelcome: true,
       updatesLog: true,
+      tokenStore: "file",
+      folderNameToken: path.join(process.cwd(), "tokens"),
       puppeteerOptions,
       browserArgs: windows
         ? ["--disable-extensions", "--no-first-run", "--no-default-browser-check"]
