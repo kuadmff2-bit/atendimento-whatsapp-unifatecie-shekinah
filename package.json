@@ -12,6 +12,8 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@wppconnect-team/wppconnect": "2.3.1"
+    "@wppconnect-team/wppconnect": "2.3.1",
+    "puppeteer": "24.43.1",
+    "puppeteer-core": "24.43.1"
   }
 }
