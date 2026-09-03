@@ -1,0 +1,17 @@
+# Dependências
+node_modules/
+
+# Sessão e cache do WhatsApp — nunca publicar
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Variáveis privadas
+.env
+.env.*
+!.env.example
+
+# Logs e arquivos temporários
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
