@@ -80,6 +80,8 @@ As conversas privadas identificadas pelo WhatsApp como `@c.us` ou `@lid` são ac
 
 O bot acompanha os eventos `message` e `message_create` para melhorar a compatibilidade com contas comuns e Business. Mensagens duplicadas são eliminadas automaticamente pelo identificador do evento.
 
+Para conversas `@lid`, o envio usa diretamente a conversa já associada à mensagem recebida. Isso evita a falha conhecida de `getChatById()` ao tentar recriar o contato protegido.
+
 ## Alterar informações
 
 Os nomes, cursos e valores ficam no objeto `CONFIG`, no começo do arquivo `index.js`. Não é necessário alterar o restante da lógica.
