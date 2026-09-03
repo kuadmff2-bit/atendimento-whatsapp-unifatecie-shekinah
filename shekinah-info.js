@@ -1,4 +1,8 @@
 module.exports = {
+  redesSociais: {
+    instagram: "https://www.instagram.com/centro_de_ensino_shekinah/",
+    facebook: "https://www.facebook.com/people/Centro-De-Ensino-Shekinah/100093706818098/",
+  },
   cursos: [
     {
       nome: "Informática Completa",
@@ -48,5 +52,10 @@ module.exports = {
     "- Esses demais cursos têm duração variável e dependem da evolução do aluno e da decisão do aluno ou responsável sobre continuar ou encerrar.",
     "- NUNCA diga que 'cada curso tem 15 meses', 'todos os cursos têm 15 meses' ou algo equivalente.",
     "- Se perguntarem a duração de um curso específico, use exatamente estas regras e não invente uma duração diferente.",
+    "",
+    "REDES SOCIAIS OFICIAIS DA SHEKINAH:",
+    "- Instagram: https://www.instagram.com/centro_de_ensino_shekinah/",
+    "- Facebook: https://www.facebook.com/people/Centro-De-Ensino-Shekinah/100093706818098/",
+    "- Se perguntarem pelas redes sociais, Instagram ou Facebook da Shekinah, forneça estes links exatos.",
   ].join("\n"),
 };
