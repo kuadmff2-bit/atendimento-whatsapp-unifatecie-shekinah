@@ -634,11 +634,16 @@ async function encaminharParaSecretariaShekinah(client, msg, sessao, problema) {
     );
   } catch (error) {
     console.error("❌ Não foi possível avisar a secretaria da Shekinah:", error);
+    const linkComMensagem =
+      `https://wa.me/${WHATSAPP_SECRETARIA_SHEKINAH}?text=` +
+      encodeURIComponent(mensagemSecretaria);
+
     await responder(
       client,
       msg.from,
       "⚠️ Não consegui encaminhar sua solicitação automaticamente neste momento.\n\n" +
-        "Fale diretamente com a secretaria pelo WhatsApp: https://wa.me/5592993977312\n\n" +
+        "Toque no link abaixo. A mensagem já estará preenchida; você só precisará apertar *Enviar*:\n\n" +
+        `${linkComMensagem}\n\n` +
         "Para voltar ao atendimento automático, digite *m*."
     );
   }
