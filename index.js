@@ -238,14 +238,28 @@ function nomeValido(nome) {
 // =====================================
 client.on("message", async (msg) => {
   try {
-    // Ignora mensagens próprias, grupos, status e outros formatos de conversa.
-    if (msg.fromMe || !msg.from || !msg.from.endsWith("@c.us")) return;
+    // Ignora mensagens próprias, grupos, status, canais e listas de transmissão.
+    // Conversas privadas atuais podem terminar em @c.us ou @lid.
+    if (msg.fromMe || !msg.from) return;
+
+    const remetente = msg.from.toLowerCase();
+    if (
+      remetente === "status@broadcast" ||
+      remetente.endsWith("@g.us") ||
+      remetente.endsWith("@broadcast") ||
+      remetente.endsWith("@newsletter")
+    ) {
+      return;
+    }
 
     const chat = await msg.getChat();
     if (chat.isGroup) return;
 
     const textoOriginal = msg.body ? msg.body.trim() : "";
     if (!textoOriginal) return;
+
+    const previa = textoOriginal.replace(/\s+/g, " ").slice(0, 80);
+    console.log(`📩 Mensagem privada recebida de ${msg.from}: ${previa}`);
 
     const texto = limparTexto(textoOriginal);
     const comandoMenu = /^(menu|inicio|comecar|recomecar|oi|ola|bom dia|boa tarde|boa noite)$/.test(texto);
