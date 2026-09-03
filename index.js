@@ -11,6 +11,32 @@ const crypto = require("crypto");
 // TEXTOS E VALORES EDITÁVEIS
 // =====================================
 const WHATSAPP_SECRETARIA_SHEKINAH = "5592993977312";
+const PASTA_TOKENS = path.join(process.cwd(), "tokens");
+const ARQUIVO_CONTATO_SECRETARIA = path.join(PASTA_TOKENS, "contato-secretaria.json");
+
+function carregarContatoSecretaria() {
+  try {
+    if (!fs.existsSync(ARQUIVO_CONTATO_SECRETARIA)) return null;
+
+    const contato = JSON.parse(fs.readFileSync(ARQUIVO_CONTATO_SECRETARIA, "utf8"));
+    if (!contato?.origem || !contato?.resolvido) return null;
+
+    console.log("✅ Contato persistente da secretaria carregado.");
+    return contato;
+  } catch (error) {
+    console.warn("⚠️ Não foi possível carregar o contato da secretaria:", error.message);
+    return null;
+  }
+}
+
+function salvarContatoSecretaria(contato) {
+  fs.mkdirSync(PASTA_TOKENS, { recursive: true });
+  const temporario = `${ARQUIVO_CONTATO_SECRETARIA}.tmp`;
+  fs.writeFileSync(temporario, JSON.stringify(contato, null, 2), "utf8");
+  fs.renameSync(temporario, ARQUIVO_CONTATO_SECRETARIA);
+}
+
+let contatoSecretariaRegistrado = carregarContatoSecretaria();
 
 const CURSOS_UNIFATECIE = {
   "1": {
@@ -267,7 +293,7 @@ iniciarServidorQr();
 function removerTravasAntigasDoChromium() {
   if (windows) return;
 
-  const pastaTokens = path.join(process.cwd(), "tokens");
+  const pastaTokens = PASTA_TOKENS;
   const nomesTrava = new Set(["SingletonLock", "SingletonSocket", "SingletonCookie"]);
   const pastasPendentes = [pastaTokens];
   let removidas = 0;
@@ -613,6 +639,36 @@ async function resolverDestino(client, destino) {
   return destino;
 }
 
+function numeroPertenceASecretaria(numero) {
+  const completo = somenteNumeros(WHATSAPP_SECRETARIA_SHEKINAH);
+  const semPais = completo.startsWith("55") ? completo.slice(2) : completo;
+  const semNonoDigito =
+    completo.startsWith("55") && completo.length === 13 && completo[4] === "9"
+      ? completo.slice(0, 4) + completo.slice(5)
+      : completo;
+  const semPaisESemNono = semNonoDigito.startsWith("55")
+    ? semNonoDigito.slice(2)
+    : semNonoDigito;
+
+  return new Set([completo, semPais, semNonoDigito, semPaisESemNono]).has(
+    somenteNumeros(numero)
+  );
+}
+
+async function registrarContatoSecretaria(client, origem) {
+  const resolvido = await resolverDestino(client, origem);
+  if (!numeroPertenceASecretaria(resolvido)) return false;
+
+  contatoSecretariaRegistrado = {
+    origem,
+    resolvido,
+    registradoEm: new Date().toISOString(),
+  };
+  salvarContatoSecretaria(contatoSecretariaRegistrado);
+  console.log(`✅ Secretaria registrada pelo contato real ${origem}.`);
+  return true;
+}
+
 async function localizarNumeroNoWhatsApp(client, numero) {
   const numeroCompleto = somenteNumeros(numero);
   const candidatos = [numeroCompleto];
@@ -652,14 +708,57 @@ async function responder(client, destino, mensagem) {
   await delay(900);
 
   const destinoResolvido = await resolverDestino(client, destino);
-  console.log(`📤 Enviando resposta para ${destinoResolvido}...`);
+  return enviarTextoDireto(client, destinoResolvido, mensagem);
+}
 
-  const resultado = await client.sendText(destinoResolvido, mensagem);
+async function enviarTextoDireto(client, destino, mensagem) {
+  console.log(`📤 Enviando resposta para ${destino}...`);
+
+  const resultado = await client.sendText(destino, mensagem);
   if (!resultado) {
     throw new Error("O WhatsApp não confirmou o envio da resposta.");
   }
 
-  console.log(`✅ Resposta enviada para ${destinoResolvido}.`);
+  console.log(`✅ Resposta enviada para ${destino}.`);
+  return resultado;
+}
+
+async function enviarMensagemParaSecretaria(client, mensagem) {
+  let ultimoErro;
+
+  if (contatoSecretariaRegistrado) {
+    const destinosRegistrados = [
+      contatoSecretariaRegistrado.origem,
+      contatoSecretariaRegistrado.resolvido,
+    ].filter((destino, indice, lista) => destino && lista.indexOf(destino) === indice);
+
+    for (const destino of destinosRegistrados) {
+      try {
+        await delay(900);
+        await enviarTextoDireto(client, destino, mensagem);
+        return;
+      } catch (error) {
+        ultimoErro = error;
+        console.warn(
+          `⚠️ Falha ao enviar para o contato registrado ${destino}:`,
+          error?.message || error
+        );
+      }
+    }
+  }
+
+  try {
+    const destinoLocalizado = await localizarNumeroNoWhatsApp(
+      client,
+      WHATSAPP_SECRETARIA_SHEKINAH
+    );
+    await responder(client, destinoLocalizado, mensagem);
+    return;
+  } catch (error) {
+    ultimoErro = error;
+  }
+
+  throw ultimoErro || new Error("Não foi possível enviar a mensagem para a secretaria.");
 }
 
 async function encaminharParaSecretariaShekinah(client, msg, sessao, problema) {
@@ -672,11 +771,7 @@ async function encaminharParaSecretariaShekinah(client, msg, sessao, problema) {
     "Por favor, entre em contato com essa pessoa para continuar o atendimento.";
 
   try {
-    const destinoSecretaria = await localizarNumeroNoWhatsApp(
-      client,
-      WHATSAPP_SECRETARIA_SHEKINAH
-    );
-    await responder(client, destinoSecretaria, mensagemSecretaria);
+    await enviarMensagemParaSecretaria(client, mensagemSecretaria);
     sessao.atendimentoHumano = true;
     sessao.etapa = "atendimento_humano";
     await responder(
@@ -1055,6 +1150,27 @@ async function processarMensagem(client, msg) {
     console.log(`📩 Mensagem privada recebida de ${msg.from}`);
 
     const texto = limparTexto(textoOriginal);
+    let secretariaIdentificada = false;
+
+    if (!contatoSecretariaRegistrado || texto === "ativar secretaria") {
+      try {
+        secretariaIdentificada = await registrarContatoSecretaria(client, msg.from);
+      } catch (error) {
+        console.warn("⚠️ Não foi possível registrar o contato da secretaria:", error.message);
+      }
+    }
+
+    if (texto === "ativar secretaria") {
+      await responder(
+        client,
+        msg.from,
+        secretariaIdentificada
+          ? "✅ *SECRETARIA ATIVADA*\n\nEste WhatsApp foi registrado com segurança. As próximas solicitações da Shekinah serão encaminhadas automaticamente para esta conversa."
+          : "⚠️ Este número não corresponde ao telefone autorizado da secretaria."
+      );
+      return;
+    }
+
     const comandoMenu = /^(m|menu|menu principal|voltar ao menu|inicio)$/.test(texto);
     const comandoInicio = ehMensagemDeInicio(texto);
 
@@ -1393,7 +1509,7 @@ async function iniciar() {
       disableWelcome: true,
       updatesLog: true,
       tokenStore: "file",
-      folderNameToken: path.join(process.cwd(), "tokens"),
+      folderNameToken: PASTA_TOKENS,
       puppeteerOptions,
       browserArgs: windows
         ? ["--disable-extensions", "--no-first-run", "--no-default-browser-check"]
