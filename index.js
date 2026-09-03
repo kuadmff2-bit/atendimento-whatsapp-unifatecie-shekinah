@@ -42,27 +42,15 @@ substituirObrigatorio(
 );
 
 substituirObrigatorio(
-  '    let textoOriginal = typeof msg.body === "string" ? msg.body.trim() : "";\n\n    if (ehMensagemDeAudio(msg)) {',
-  `    let textoOriginal = typeof msg.body === "string" ? msg.body.trim() : "";\n    const mensagemEraAudio = ehMensagemDeAudio(msg);\n\n    if (mensagemEraAudio) {`,
-  "identificação persistente de mensagem de áudio"
-);
-
-substituirObrigatorio(
-  '      textoOriginal = String(transcricaoAudio.texto || "").trim();\n      console.log(`🎤 Áudio recebido e transcrito (${textoOriginal.length} caracteres).`);',
-  `      textoOriginal = String(transcricaoAudio.texto || "").trim();\n      sessao.ultimaTranscricaoAudio = textoOriginal;\n      sessao.ultimoAudioEm = Date.now();\n      console.log(\`🎤 Áudio recebido e transcrito (\${textoOriginal.length} caracteres).\`);`,
-  "memória da última transcrição"
-);
-
-substituirObrigatorio(
-  '    const texto = limparTexto(textoOriginal);\n\n    const corrigidoAntesDoFluxo = await tentarCorrecoesAtendimento({',
-  `    const texto = limparTexto(textoOriginal);\n\n    if (!mensagemEraAudio) {\n      const perguntouSobreAudio = /^(voce entendeu meu audio|entendeu meu audio|o que eu falei|oque eu falei|o que falei|qual foi meu audio|o que tinha no audio|o que eu disse no audio|repete meu audio)$/i.test(texto);\n\n      if (perguntouSobreAudio) {\n        const transcricaoSalva = String(sessao.ultimaTranscricaoAudio || "").trim();\n        if (transcricaoSalva) {\n          await responder(\n            client,\n            msg.from,\n            \`🎤 Sim. A última coisa que entendi do seu áudio foi:\\n\\n“\${transcricaoSalva}”\`\n          );\n        } else {\n          await responder(\n            client,\n            msg.from,\n            "🎤 Não tenho uma transcrição de áudio salva nesta conversa. Se o áudio anterior falhou, pode enviar novamente. 😊"\n          );\n        }\n        return;\n      }\n    }\n\n    const corrigidoAntesDoFluxo = await tentarCorrecoesAtendimento({`,
-  "resposta verdadeira sobre o último áudio"
+  '    const textoOriginal = typeof msg.body === "string" ? msg.body.trim() : "";\n\n    if (!textoOriginal) {',
+  `    let textoOriginal = typeof msg.body === "string" ? msg.body.trim() : "";\n    const mensagemEraAudio = ehMensagemDeAudio(msg);\n\n    if (mensagemEraAudio) {\n      const transcricaoAudio = await transcreverAudioWhatsApp(client, msg);\n\n      if (!transcricaoAudio?.ok) {\n        await responder(\n          client,\n          msg.from,\n          transcricaoAudio?.mensagem ||\n            "🎤 Não consegui entender esse áudio. Pode tentar novamente ou escrever a mensagem? 😊"\n        );\n        return;\n      }\n\n      textoOriginal = String(transcricaoAudio.texto || "").trim();\n      sessao.ultimaTranscricaoAudio = textoOriginal;\n      sessao.ultimoAudioEm = Date.now();\n      console.log(\`🎤 Áudio recebido e transcrito (\${textoOriginal.length} caracteres).\`);\n    }\n\n    if (!textoOriginal) {`,
+  "transcrição e memória de áudio"
 );
 
 substituirObrigatorio(
   '    const texto = limparTexto(textoOriginal);\n    let secretariaIdentificada = false;',
-  `    const texto = limparTexto(textoOriginal);\n\n    const corrigidoAntesDoFluxo = await tentarCorrecoesAtendimento({\n      client,\n      msg,\n      textoOriginal,\n      texto,\n      sessao,\n      responder,\n    });\n    if (corrigidoAntesDoFluxo) return;\n\n    const tratadoNaturalmente = await tentarConversaNatural({\n      client,\n      msg,\n      textoOriginal,\n      texto,\n      sessao,\n      cursosUnifatecie: CURSOS_UNIFATECIE,\n      config: CONFIG,\n      responder,\n      tentarResponderComIA,\n      iaDisponivel,\n    });\n    if (tratadoNaturalmente) return;\n\n    let secretariaIdentificada = false;`,
-  "interceptadores antes do fluxo estruturado"
+  `    const texto = limparTexto(textoOriginal);\n\n    if (!mensagemEraAudio) {\n      const perguntouSobreAudio = /^(voce entendeu meu audio|entendeu meu audio|o que eu falei|oque eu falei|o que falei|qual foi meu audio|o que tinha no audio|o que eu disse no audio|repete meu audio)$/i.test(texto);\n\n      if (perguntouSobreAudio) {\n        const transcricaoSalva = String(sessao.ultimaTranscricaoAudio || "").trim();\n        if (transcricaoSalva) {\n          await responder(\n            client,\n            msg.from,\n            \`🎤 Sim. A última coisa que entendi do seu áudio foi:\\n\\n“\${transcricaoSalva}”\`\n          );\n        } else {\n          await responder(\n            client,\n            msg.from,\n            "🎤 Não tenho uma transcrição de áudio salva nesta conversa. Se o áudio anterior falhou, pode enviar novamente. 😊"\n          );\n        }\n        return;\n      }\n    }\n\n    const corrigidoAntesDoFluxo = await tentarCorrecoesAtendimento({\n      client,\n      msg,\n      textoOriginal,\n      texto,\n      sessao,\n      responder,\n    });\n    if (corrigidoAntesDoFluxo) return;\n\n    const tratadoNaturalmente = await tentarConversaNatural({\n      client,\n      msg,\n      textoOriginal,\n      texto,\n      sessao,\n      cursosUnifatecie: CURSOS_UNIFATECIE,\n      config: CONFIG,\n      responder,\n      tentarResponderComIA,\n      iaDisponivel,\n    });\n    if (tratadoNaturalmente) return;\n\n    let secretariaIdentificada = false;`,
+  "memória de áudio e interceptadores"
 );
 
 substituirTodosObrigatorio(
