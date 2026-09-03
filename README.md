@@ -36,6 +36,24 @@ npm start
 
 Para desligar o robô, pressione `Ctrl + C` no terminal.
 
+## Erro de tempo esgotado ao abrir o navegador
+
+O projeto detecta automaticamente o Google Chrome ou o Microsoft Edge instalado no Windows e aguarda até dois minutos pela inicialização. Isso melhora a compatibilidade com computadores Windows ARM64.
+
+Se ainda aparecer `Timed out while waiting for the WS endpoint`:
+
+1. feche completamente o Chrome e o Edge;
+2. abra o Gerenciador de Tarefas e encerre processos restantes desses navegadores;
+3. execute `npm install` novamente;
+4. inicie com `npm start`.
+
+Se o navegador estiver instalado em outro lugar, informe o caminho antes de iniciar:
+
+```powershell
+$env:CHROME_PATH="C:\caminho\para\chrome.exe"
+npm start
+```
+
 ## Receber atualizações
 
 Quando houver uma alteração publicada, execute:
