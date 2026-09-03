@@ -21,7 +21,7 @@ COPY package.json ./
 RUN npm install --omit=dev \
     && npm cache clean --force
 
-COPY index.js legacy-index.js ia-groq.js gateway-ia.js ./
+COPY index.js legacy-index.js ia-groq.js conversation-core.js ./
 RUN mkdir -p /app/tokens
 
 CMD ["npm", "start"]
