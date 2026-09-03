@@ -66,6 +66,8 @@ npm start
 
 O `npm install` garante que qualquer dependência nova seja instalada.
 
+O projeto usa um commit fixo do repositório oficial do `whatsapp-web.js`. Essa versão contém correções de eventos que ainda não estavam presentes na última publicação disponível pelo npm.
+
 ## Comandos do cliente
 
 - `oi`, `olá`, `bom dia`, `boa tarde` ou `boa noite`: inicia o atendimento;
