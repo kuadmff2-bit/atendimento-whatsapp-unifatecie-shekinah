@@ -76,6 +76,8 @@ Quando o cliente pede um atendente, o robô para de responder naquela conversa. 
 
 As conversas privadas identificadas pelo WhatsApp como `@c.us` ou `@lid` são aceitas. Grupos, status, canais e listas de transmissão são ignorados.
 
+O bot acompanha os eventos `message` e `message_create` para melhorar a compatibilidade com contas comuns e Business. Mensagens duplicadas são eliminadas automaticamente pelo identificador do evento.
+
 ## Alterar informações
 
 Os nomes, cursos e valores ficam no objeto `CONFIG`, no começo do arquivo `index.js`. Não é necessário alterar o restante da lógica.
