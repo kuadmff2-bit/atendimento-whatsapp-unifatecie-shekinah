@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && node --check legacy-index.js && node --check ia-groq.js && node --check gateway-ia.js"
+    "check": "node --check index.js && node --check legacy-index.js && node --check ia-groq.js && node --check conversation-core.js"
   },
   "engines": {
     "node": ">=18.0.0"
