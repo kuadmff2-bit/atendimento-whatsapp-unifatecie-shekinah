@@ -16,8 +16,14 @@ function substituirObrigatorio(antigo, novo, nome) {
 
 substituirObrigatorio(
   'const { iaDisponivel, tentarResponderComIA } = require("./ia-groq");',
-  'const { iaDisponivel, tentarResponderComIA } = require("./ia-groq");\nconst { tentarConversaNatural } = require("./conversation-core");',
-  "módulo conversacional"
+  'const { iaDisponivel, tentarResponderComIA } = require("./ia-groq");\nconst { tentarConversaNatural } = require("./conversation-core");\nconst CURSOS_EXTRA_UNIFATECIE = require("./catalogo-extra");',
+  "módulos conversacionais"
+);
+
+substituirObrigatorio(
+  'const CURSOS_UNIFATECIE = {',
+  'const CURSOS_UNIFATECIE = {\n  ...CURSOS_EXTRA_UNIFATECIE,',
+  "catálogo extra da UniFatecie"
 );
 
 substituirObrigatorio(
