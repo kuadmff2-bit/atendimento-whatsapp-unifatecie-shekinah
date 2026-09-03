@@ -3,6 +3,8 @@
 // =====================================
 const qrcode = require("qrcode-terminal");
 const { Client, LocalAuth } = require("whatsapp-web.js");
+const fs = require("fs");
+const path = require("path");
 
 // =====================================
 // TEXTOS E VALORES EDITÁVEIS
@@ -47,18 +49,52 @@ const CONFIG = {
 // =====================================
 // CONFIGURAÇÃO DO CLIENTE
 // =====================================
+const windows = process.platform === "win32";
+
+function encontrarNavegadorWindows() {
+  if (!windows) return null;
+
+  const candidatos = [
+    process.env.CHROME_PATH,
+    process.env.LOCALAPPDATA &&
+      path.join(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
+    process.env.PROGRAMFILES &&
+      path.join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe"),
+    process.env["PROGRAMFILES(X86)"] &&
+      path.join(process.env["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe"),
+    process.env.PROGRAMFILES &&
+      path.join(process.env.PROGRAMFILES, "Microsoft", "Edge", "Application", "msedge.exe"),
+    process.env["PROGRAMFILES(X86)"] &&
+      path.join(process.env["PROGRAMFILES(X86)"], "Microsoft", "Edge", "Application", "msedge.exe"),
+    process.env.LOCALAPPDATA &&
+      path.join(process.env.LOCALAPPDATA, "Microsoft", "Edge", "Application", "msedge.exe"),
+  ].filter(Boolean);
+
+  return candidatos.find((caminho) => fs.existsSync(caminho)) || null;
+}
+
+const caminhoNavegador = encontrarNavegadorWindows();
+
+const opcoesPuppeteer = {
+  headless: true,
+  // O Puppeteer usa 30 segundos por padrão. Em computadores ARM ou mais
+  // lentos, o navegador pode precisar de mais tempo para iniciar.
+  timeout: 120000,
+  args: windows
+    ? ["--disable-extensions", "--no-first-run", "--no-default-browser-check"]
+    : ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+};
+
+// No Windows, prioriza o Chrome/Edge já instalado. Isso evita incompatibilidade
+// do navegador baixado pelo Puppeteer em computadores Windows ARM64.
+if (caminhoNavegador) {
+  opcoesPuppeteer.executablePath = caminhoNavegador;
+  console.log(`🌐 Navegador detectado: ${caminhoNavegador}`);
+}
+
 const client = new Client({
   authStrategy: new LocalAuth(),
-  puppeteer: {
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--single-process",
-    ],
-  },
+  puppeteer: opcoesPuppeteer,
 });
 
 // =====================================
@@ -85,7 +121,18 @@ client.on("disconnected", (reason) => {
   console.log("⚠️ Desconectado:", reason);
 });
 
-client.initialize();
+client.initialize().catch((error) => {
+  console.error("❌ Não foi possível iniciar o navegador do WhatsApp.");
+  console.error(error);
+
+  if (windows) {
+    console.error(
+      "\nConfira se o Google Chrome ou o Microsoft Edge está instalado e totalmente fechado antes de tentar novamente."
+    );
+  }
+
+  process.exitCode = 1;
+});
 
 // =====================================
 // FUNÇÕES AUXILIARES
@@ -404,4 +451,3 @@ client.on("message", async (msg) => {
     console.error("❌ Erro no processamento da mensagem:", error);
   }
 });
-
