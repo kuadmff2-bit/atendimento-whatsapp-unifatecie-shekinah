@@ -4,6 +4,8 @@
 const wppconnect = require("@wppconnect-team/wppconnect");
 const fs = require("fs");
 const path = require("path");
+const http = require("http");
+const crypto = require("crypto");
 
 // =====================================
 // TEXTOS E VALORES EDITÁVEIS
@@ -78,6 +80,94 @@ function encontrarNavegador() {
 }
 
 const caminhoNavegador = encontrarNavegador();
+
+// =====================================
+// PÁGINA SEGURA DO QR CODE
+// =====================================
+let qrCodeImagem = null;
+let whatsappConectado = false;
+const acessoQr = process.env.QR_ACCESS_TOKEN || crypto.randomBytes(18).toString("hex");
+
+function criarPaginaQr() {
+  let conteudo;
+
+  if (whatsappConectado) {
+    conteudo =
+      '<div class="status sucesso">✅ WhatsApp conectado!</div>' +
+      "<p>O atendimento já está funcionando. Você pode fechar esta página.</p>";
+  } else if (qrCodeImagem) {
+    conteudo =
+      '<div class="status">📲 Escaneie o QR Code</div>' +
+      '<img src="' + qrCodeImagem + '" alt="QR Code para conectar o WhatsApp">' +
+      "<p>WhatsApp Business → Aparelhos conectados → Conectar um aparelho</p>" +
+      "<small>Esta página atualiza automaticamente.</small>";
+  } else {
+    conteudo =
+      '<div class="status">⏳ Preparando o QR Code...</div>' +
+      "<p>Aguarde alguns segundos. Esta página atualizará automaticamente.</p>";
+  }
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="refresh" content="5">
+  <title>Conectar WhatsApp</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b141a;color:#e9edef;font-family:Arial,sans-serif;padding:20px}
+    main{width:min(100%,460px);background:#202c33;border:1px solid #34444d;border-radius:20px;padding:28px;text-align:center;box-shadow:0 18px 50px #0008}
+    h1{font-size:25px;margin:0 0 22px}
+    .status{font-size:20px;font-weight:700;margin-bottom:18px}
+    .sucesso{color:#25d366}
+    img{display:block;width:min(100%,340px);height:auto;margin:0 auto 20px;background:#fff;padding:14px;border-radius:12px}
+    p{line-height:1.5;color:#d1d7db}
+    small{color:#8696a0}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Atendimento UniFatecie e Shekinah</h1>
+    ${conteudo}
+  </main>
+</body>
+</html>`;
+}
+
+function iniciarServidorQr() {
+  const porta = Number(process.env.PORT || 3000);
+  const caminhoQr = `/qr/${acessoQr}`;
+
+  const servidor = http.createServer((req, res) => {
+    const caminhoSolicitado = new URL(req.url, "http://localhost").pathname;
+
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+
+    if (caminhoSolicitado !== caminhoQr) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Página não encontrada.");
+      return;
+    }
+
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(criarPaginaQr());
+  });
+
+  servidor.listen(porta, "0.0.0.0", () => {
+    const dominio = process.env.RAILWAY_PUBLIC_DOMAIN;
+    const endereco = dominio
+      ? `https://${dominio}${caminhoQr}`
+      : `http://localhost:${porta}${caminhoQr}`;
+
+    console.log(`🔐 Página segura do QR Code: ${endereco}`);
+  });
+}
+
+iniciarServidorQr();
 
 // =====================================
 // SESSÕES DO ATENDIMENTO
@@ -845,9 +935,23 @@ async function iniciar() {
 
     const client = await wppconnect.create({
       session: "atendimento-unifatecie-shekinah",
+      catchQR: (base64Qrimg, _asciiQR, attempts) => {
+        qrCodeImagem = base64Qrimg.startsWith("data:image")
+          ? base64Qrimg
+          : `data:image/png;base64,${base64Qrimg}`;
+        whatsappConectado = false;
+        console.log(`📲 QR Code atualizado (tentativa ${attempts}). Abra a página segura acima.`);
+      },
+      statusFind: (statusSession) => {
+        if (["isLogged", "qrReadSuccess", "inChat"].includes(statusSession)) {
+          whatsappConectado = true;
+          qrCodeImagem = null;
+        }
+        console.log(`🔐 Estado da autenticação: ${statusSession}`);
+      },
       headless: true,
       useChrome: true,
-      logQR: true,
+      logQR: false,
       autoClose: 0,
       deviceSyncTimeout: 0,
       waitForLogin: true,
@@ -861,6 +965,8 @@ async function iniciar() {
         : ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
     });
 
+    whatsappConectado = true;
+    qrCodeImagem = null;
     console.log("✅ Tudo certo! WhatsApp conectado e atendimento ativo.");
 
     client.onMessage((msg) => processarMensagem(client, msg));
