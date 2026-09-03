@@ -25,7 +25,7 @@ function substituirTodosObrigatorio(antigo, novo, nome) {
 
 substituirObrigatorio(
   'const { iaDisponivel, tentarResponderComIA } = require("./ia-groq");',
-  'const { iaDisponivel, tentarResponderComIA } = require("./ia-groq-ext");\nconst { tentarConversaNatural } = require("./conversation-core");\nconst { tentarCorrecoesAtendimento } = require("./atendimento-fixes");\nconst { encaminharPreMatriculaShekinah } = require("./shekinah-forward");\nconst CURSOS_EXTRA_UNIFATECIE = require("./catalogo-extra");',
+  'const { iaDisponivel, tentarResponderComIA } = require("./ia-groq-ext");\nconst { tentarConversaNatural } = require("./conversation-core-ext");\nconst { tentarCorrecoesAtendimento } = require("./atendimento-fixes");\nconst { encaminharPreMatriculaShekinah } = require("./shekinah-forward");\nconst CURSOS_EXTRA_UNIFATECIE = require("./catalogo-extra");',
   "módulos conversacionais"
 );
 
