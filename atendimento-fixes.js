@@ -54,6 +54,26 @@ function perguntaDuracao(texto = "") {
   return /\b(duracao|dura|duram|tempo|quanto tempo|quantos meses|meses)\b/.test(t);
 }
 
+function querMatriculaShekinah(texto = "") {
+  const t = normalizar(texto);
+  const mencionaMatricula = /\b(quero fazer|quero estudar|quero me matricular|quero matricular|fazer o curso|fazer os cursos|matricula|matricular)\b/.test(t);
+  const mencionaShekinah = /\bshekinah\b/.test(t);
+  return mencionaMatricula && mencionaShekinah;
+}
+
+function iniciarMatriculaShekinahComCursos(sessao, cursos) {
+  sessao.instituicao = "shekinah";
+  sessao.atendimentoHumano = false;
+  sessao.dados = {
+    curso: cursos.map((curso) => curso.nome).join(" + "),
+  };
+  sessao.curso = sessao.dados.curso;
+  sessao.cursoAtual = null;
+  sessao.acaoPendente = null;
+  sessao.menorDeIdade = false;
+  sessao.etapa = "shekinah_matricula_nome";
+}
+
 async function tentarCorrecoesAtendimento({
   client,
   msg,
@@ -70,15 +90,10 @@ async function tentarCorrecoesAtendimento({
     resetarSessao(sessao);
 
     const querNovoCursoShekinah =
-      /shekinah/.test(t) &&
-      /quero fazer|quero estudar|quero me matricular|matricula/.test(t) &&
-      cursosShekinah.length > 0;
+      querMatriculaShekinah(textoOriginal) && cursosShekinah.length > 0;
 
     if (querNovoCursoShekinah) {
-      sessao.instituicao = "shekinah";
-      sessao.dados = { curso: cursosShekinah.map((curso) => curso.nome).join(" + ") };
-      sessao.curso = sessao.dados.curso;
-      sessao.etapa = "shekinah_matricula_nome";
+      iniciarMatriculaShekinahComCursos(sessao, cursosShekinah);
 
       await responder(
         client,
@@ -101,6 +116,20 @@ async function tentarCorrecoesAtendimento({
       client,
       msg.from,
       "✅ Atendimento anterior cancelado. 😊\n\nPode falar comigo normalmente sobre 🎓 cursos, 📝 matrícula, 💳 financeiro ou 👩‍💼 secretaria."
+    );
+    return true;
+  }
+
+  // Se a pessoa já informou o(s) curso(s) que quer fazer na Shekinah,
+  // não pergunte novamente qual curso deseja.
+  if (querMatriculaShekinah(textoOriginal) && cursosShekinah.length > 0) {
+    iniciarMatriculaShekinahComCursos(sessao, cursosShekinah);
+
+    const plural = cursosShekinah.length > 1;
+    await responder(
+      client,
+      msg.from,
+      `📝 Perfeito! Vamos iniciar sua matrícula na *Shekinah* ${plural ? "nos cursos" : "no curso"} *${sessao.dados.curso}*. 😊\n\n👤 Qual é o *nome completo do aluno*?`
     );
     return true;
   }
