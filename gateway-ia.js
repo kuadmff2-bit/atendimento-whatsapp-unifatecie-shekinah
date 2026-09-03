@@ -48,6 +48,7 @@ function limpar(texto = "") {
 function novaSessao() {
   return {
     instituicao: null,
+    cursoAtual: null,
     historicoIA: [],
     acaoPendente: null,
     navegacao: 0,
@@ -208,15 +209,27 @@ async function atenderConversando(client, msg, legacyHandler) {
   const instituicao = descobrirInstituicao(texto);
   if (instituicao) sessao.instituicao = instituicao;
 
-  const curso = descobrirCurso(texto);
+  let curso = descobrirCurso(texto);
+  if (curso) {
+    sessao.cursoAtual = curso;
+    sessao.instituicao = "unifatecie";
+  }
+
+  const ehContinuacaoDeCurso = /^(valor|preco|mensalidade|quanto|quanto custa|duracao|tempo|estagio|formacao|detalhes|mais detalhes|matricula)$/.test(texto);
+  if (!curso && sessao.cursoAtual && ehContinuacaoDeCurso) {
+    curso = sessao.cursoAtual;
+    sessao.instituicao = "unifatecie";
+  }
+
   const querMatricula = /matricul|inscri|quero entrar|quero fazer|quero estudar/.test(texto);
-  const querFinanceiro = /financeir|boleto|mensalidade|pagamento|paguei|divida|segunda via|vencimento/.test(texto);
+  const querFinanceiro = /financeir|boleto|mensalidade|pagamento|paguei|divida|segunda via|vencimento/.test(texto) && !curso;
   const querSecretaria = /secretaria|atendente|humano|falar com alguem|falar com uma pessoa/.test(texto);
   const querCursos = /(quais|lista|mostrar|mostra|tem|oferece|ofertam).*(curso|cursos)|(curso|cursos).*(tem|oferece|quais|lista)/.test(texto);
+  const querDetalheCurso = /(valor|preco|mensalidade|custa|quanto|duracao|tempo|estagio|formacao|detalhe)/.test(texto);
 
   if (sessao.acaoPendente && sessao.instituicao) {
     const acao = sessao.acaoPendente;
-    if (acao === "matricula") return prepararFluxoLegacy(client, legacyHandler, msg, sessao, acao, curso);
+    if (acao === "matricula") return prepararFluxoLegacy(client, legacyHandler, msg, sessao, acao, curso || sessao.cursoAtual);
     return prepararFluxoLegacy(client, legacyHandler, msg, sessao, acao);
   }
 
@@ -226,7 +239,7 @@ async function atenderConversando(client, msg, legacyHandler) {
       await responder(client, msg.from, "📝 Claro! Sua matrícula é para a *UniFatecie* ou para a *Shekinah*? 😊");
       return true;
     }
-    return prepararFluxoLegacy(client, legacyHandler, msg, sessao, "matricula", curso);
+    return prepararFluxoLegacy(client, legacyHandler, msg, sessao, "matricula", curso || sessao.cursoAtual);
   }
 
   if (querFinanceiro) {
@@ -247,12 +260,17 @@ async function atenderConversando(client, msg, legacyHandler) {
     return prepararFluxoLegacy(client, legacyHandler, msg, sessao, "secretaria");
   }
 
-  if (curso && /(valor|preco|mensalidade|custa|duracao|tempo|estagio)/.test(texto)) {
+  if (curso && querDetalheCurso) {
     await responder(
       client,
       msg.from,
       `${curso.emoji} *${curso.nome}*\n💰 Mensalidade: *${curso.mensalidade}*\n⏳ Duração: *${curso.duracao}*\n🎓 Formação: *${curso.formacao}*\n📚 Estágio: *${curso.estagio}*\n\n😊 Quer saber mais alguma coisa sobre esse curso?`
     );
+    return true;
+  }
+
+  if (!curso && ehContinuacaoDeCurso && !sessao.cursoAtual) {
+    await responder(client, msg.from, "🎓 Claro! De qual curso você quer saber? 😊");
     return true;
   }
 
@@ -268,6 +286,11 @@ async function atenderConversando(client, msg, legacyHandler) {
   if (iaDisponivel()) {
     const respondeu = await responderIA(client, msg, sessao, textoOriginal);
     if (respondeu) return true;
+  }
+
+  if (sessao.instituicao) {
+    await responder(client, msg.from, "😊 Pode me explicar um pouquinho mais o que você quer saber?");
+    return true;
   }
 
   return false;
