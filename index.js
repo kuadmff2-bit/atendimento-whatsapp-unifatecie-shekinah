@@ -109,8 +109,14 @@ client.on("authenticated", () => {
   console.log("🔐 WhatsApp autenticado.");
 });
 
-client.on("ready", () => {
+client.on("ready", async () => {
   console.log("✅ Tudo certo! WhatsApp conectado.");
+
+  try {
+    console.log(`📦 WhatsApp Web: ${await client.getWWebVersion()}`);
+  } catch (error) {
+    console.log("⚠️ Não foi possível consultar a versão do WhatsApp Web.");
+  }
 });
 
 client.on("auth_failure", (erro) => {
