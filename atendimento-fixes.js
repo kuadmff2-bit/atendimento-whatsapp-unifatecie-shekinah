@@ -29,7 +29,6 @@ function resetarSessao(sessao) {
 function pediuCancelamento(textoOriginal = "") {
   const original = String(textoOriginal).trim().toLowerCase();
 
-  // "não quero cancelar" é diferente de "não, quero cancelar".
   if (/\bn[aã]o\s+quero\s+cancelar\b/.test(original)) return false;
 
   return /\b(quero\s+cancelar|cancelar|cancele|cancela\s+isso|cancelamento|quero\s+parar|parar\s+(?:a\s+)?matr[ií]cula|desistir\s+(?:da\s+)?matr[ií]cula)\b/.test(original);
@@ -54,11 +53,15 @@ function perguntaDuracao(texto = "") {
   return /\b(duracao|dura|duram|tempo|quanto tempo|quantos meses|meses)\b/.test(t);
 }
 
-function querMatriculaShekinah(texto = "") {
+function querMatriculaShekinah(texto = "", sessao, cursos = []) {
   const t = normalizar(texto);
   const mencionaMatricula = /\b(quero fazer|quero estudar|quero me matricular|quero matricular|fazer o curso|fazer os cursos|matricula|matricular)\b/.test(t);
-  const mencionaShekinah = /\bshekinah\b/.test(t);
-  return mencionaMatricula && mencionaShekinah;
+  const contextoShekinah =
+    /\bshekinah\b/.test(t) ||
+    sessao?.instituicao === "shekinah" ||
+    cursos.length > 0;
+
+  return mencionaMatricula && contextoShekinah;
 }
 
 function iniciarMatriculaShekinahComCursos(sessao, cursos) {
@@ -72,6 +75,16 @@ function iniciarMatriculaShekinahComCursos(sessao, cursos) {
   sessao.acaoPendente = null;
   sessao.menorDeIdade = false;
   sessao.etapa = "shekinah_matricula_nome";
+}
+
+function resumoDuracoesShekinah() {
+  return (
+    "⏳ *Duração dos cursos da Shekinah*\n\n" +
+    "💻 Informática Básica/Completa: *15 meses*\n" +
+    "🖥️ Informática Avançada: *15 meses*\n" +
+    "💼 Gestão Empresarial 6 em 1: *15 meses*\n\n" +
+    "📚 Inglês Kids, Desenho Artístico, Teclado, Reforço Escolar e EJA têm duração *variável*, conforme a evolução do aluno e a decisão do aluno ou responsável de continuar. 😊"
+  );
 }
 
 async function tentarCorrecoesAtendimento({
@@ -90,7 +103,7 @@ async function tentarCorrecoesAtendimento({
     resetarSessao(sessao);
 
     const querNovoCursoShekinah =
-      querMatriculaShekinah(textoOriginal) && cursosShekinah.length > 0;
+      querMatriculaShekinah(textoOriginal, sessao, cursosShekinah) && cursosShekinah.length > 0;
 
     if (querNovoCursoShekinah) {
       iniciarMatriculaShekinahComCursos(sessao, cursosShekinah);
@@ -107,10 +120,7 @@ async function tentarCorrecoesAtendimento({
       /quero fazer|quero estudar|quero saber|curso|unifatecie|shekinah|financeiro|secretaria/.test(t) &&
       !/^(cancelar|cancele|cancelamento|quero cancelar|cancela isso)$/.test(t);
 
-    if (temOutroPedido) {
-      // A sessão já foi limpa. A conversa natural processará o restante da mesma mensagem.
-      return false;
-    }
+    if (temOutroPedido) return false;
 
     await responder(
       client,
@@ -120,9 +130,9 @@ async function tentarCorrecoesAtendimento({
     return true;
   }
 
-  // Se a pessoa já informou o(s) curso(s) que quer fazer na Shekinah,
-  // não pergunte novamente qual curso deseja.
-  if (querMatriculaShekinah(textoOriginal) && cursosShekinah.length > 0) {
+  // O nome de um curso da Shekinah já é contexto suficiente.
+  // Não pergunte novamente qual curso a pessoa quer fazer.
+  if (querMatriculaShekinah(textoOriginal, sessao, cursosShekinah) && cursosShekinah.length > 0) {
     iniciarMatriculaShekinahComCursos(sessao, cursosShekinah);
 
     const plural = cursosShekinah.length > 1;
@@ -147,6 +157,15 @@ async function tentarCorrecoesAtendimento({
       msg.from,
       `${linhas.join("\n")}\n\n😊 Se quiser, também posso te passar valores, frequência das aulas ou iniciar a matrícula.`
     );
+    return true;
+  }
+
+  if (
+    perguntaDuracao(textoOriginal) &&
+    (/\bshekinah\b/.test(t) || sessao.instituicao === "shekinah")
+  ) {
+    sessao.instituicao = "shekinah";
+    await responder(client, msg.from, resumoDuracoesShekinah());
     return true;
   }
 
