@@ -1041,12 +1041,30 @@ async function processarMensagem(client, msg) {
       }
 
       sessao.dados.secretariaNome = textoOriginal;
-      sessao.etapa = "shekinah_secretaria_telefone";
-      await responder(
-        client,
-        msg.from,
-        "📱 Informe um *telefone/WhatsApp com DDD* para a secretaria entrar em contato."
-      );
+      const contatoResolvido = await resolverDestino(client, msg.from);
+      const telefoneAutomatico = contatoResolvido.endsWith("@c.us")
+        ? somenteNumeros(contatoResolvido.replace("@c.us", ""))
+        : "";
+
+      if (telefoneValido(telefoneAutomatico)) {
+        sessao.dados.secretariaTelefone = telefoneAutomatico;
+        sessao.etapa = "shekinah_secretaria_problema";
+        await responder(
+          client,
+          msg.from,
+          "✅ Já identifiquei automaticamente o seu número do WhatsApp.\n\n" +
+            "📝 Agora conte resumidamente qual é o *problema ou dúvida* que deseja resolver.\n\n" +
+            "🔒 Não envie senha, código de acesso ou dados de cartão."
+        );
+      } else {
+        sessao.etapa = "shekinah_secretaria_telefone";
+        await responder(
+          client,
+          msg.from,
+          "Não consegui identificar seu número automaticamente.\n\n" +
+            "📱 Informe um *telefone/WhatsApp com DDD* para a secretaria entrar em contato."
+        );
+      }
       return;
     }
 
