@@ -141,6 +141,17 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // As sessões ficam separadas por número de WhatsApp.
 const sessoes = new Map();
+const mensagensProcessadas = new Set();
+
+function marcarMensagemComoProcessada(id) {
+  if (!id) return false;
+  if (mensagensProcessadas.has(id)) return true;
+
+  mensagensProcessadas.add(id);
+  const limpeza = setTimeout(() => mensagensProcessadas.delete(id), 2 * 60 * 1000);
+  limpeza.unref();
+  return false;
+}
 
 function novaSessao() {
   return {
@@ -236,8 +247,19 @@ function nomeValido(nome) {
 // =====================================
 // FUNIL DE ATENDIMENTO — SOMENTE PRIVADO
 // =====================================
-client.on("message", async (msg) => {
+async function processarMensagem(msg) {
+  const idMensagem = msg.id?._serialized || null;
+
   try {
+    // Algumas contas entregam a mensagem em "message", outras também usam
+    // "message_create". O ID impede que a mesma mensagem seja respondida duas vezes.
+    if (marcarMensagemComoProcessada(idMensagem)) return;
+
+    console.log(
+      `🔎 Evento recebido: origem=${msg.from || "desconhecida"} ` +
+        `própria=${msg.fromMe ? "sim" : "não"} tipo=${msg.type || "desconhecido"}`
+    );
+
     // Ignora mensagens próprias, grupos, status, canais e listas de transmissão.
     // Conversas privadas atuais podem terminar em @c.us ou @lid.
     if (msg.fromMe || !msg.from) return;
@@ -462,6 +484,11 @@ client.on("message", async (msg) => {
     sessoes.set(msg.from, novaSessao());
     await enviarDigitando(chat, msg.from, menuInicial());
   } catch (error) {
+    // Permite uma nova tentativa caso o primeiro evento tenha falhado.
+    if (idMensagem) mensagensProcessadas.delete(idMensagem);
     console.error("❌ Erro no processamento da mensagem:", error);
   }
-});
+}
+
+client.on("message", processarMensagem);
+client.on("message_create", processarMensagem);
