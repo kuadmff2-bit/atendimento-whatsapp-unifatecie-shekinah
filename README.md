@@ -74,6 +74,8 @@ O `npm install` garante que qualquer dependência nova seja instalada.
 
 Quando o cliente pede um atendente, o robô para de responder naquela conversa. Para voltar ao atendimento automático, o cliente pode digitar `menu`.
 
+As conversas privadas identificadas pelo WhatsApp como `@c.us` ou `@lid` são aceitas. Grupos, status, canais e listas de transmissão são ignorados.
+
 ## Alterar informações
 
 Os nomes, cursos e valores ficam no objeto `CONFIG`, no começo do arquivo `index.js`. Não é necessário alterar o restante da lógica.
