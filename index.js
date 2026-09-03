@@ -16,7 +16,7 @@ function substituirObrigatorio(antigo, novo, nome) {
 
 substituirObrigatorio(
   'const { iaDisponivel, tentarResponderComIA } = require("./ia-groq");',
-  'const { iaDisponivel, tentarResponderComIA } = require("./ia-groq");\nconst { tentarConversaNatural } = require("./conversation-core");\nconst CURSOS_EXTRA_UNIFATECIE = require("./catalogo-extra");',
+  'const { iaDisponivel, tentarResponderComIA } = require("./ia-groq-ext");\nconst { tentarConversaNatural } = require("./conversation-core");\nconst { tentarCorrecoesAtendimento } = require("./atendimento-fixes");\nconst CURSOS_EXTRA_UNIFATECIE = require("./catalogo-extra");',
   "módulos conversacionais"
 );
 
@@ -28,8 +28,8 @@ substituirObrigatorio(
 
 substituirObrigatorio(
   '    const texto = limparTexto(textoOriginal);\n    let secretariaIdentificada = false;',
-  `    const texto = limparTexto(textoOriginal);\n\n    const tratadoNaturalmente = await tentarConversaNatural({\n      client,\n      msg,\n      textoOriginal,\n      texto,\n      sessao,\n      cursosUnifatecie: CURSOS_UNIFATECIE,\n      config: CONFIG,\n      responder,\n      tentarResponderComIA,\n      iaDisponivel,\n    });\n    if (tratadoNaturalmente) return;\n\n    let secretariaIdentificada = false;`,
-  "interceptador de conversa natural"
+  `    const texto = limparTexto(textoOriginal);\n\n    const corrigidoAntesDoFluxo = await tentarCorrecoesAtendimento({\n      client,\n      msg,\n      textoOriginal,\n      texto,\n      sessao,\n      responder,\n    });\n    if (corrigidoAntesDoFluxo) return;\n\n    const tratadoNaturalmente = await tentarConversaNatural({\n      client,\n      msg,\n      textoOriginal,\n      texto,\n      sessao,\n      cursosUnifatecie: CURSOS_UNIFATECIE,\n      config: CONFIG,\n      responder,\n      tentarResponderComIA,\n      iaDisponivel,\n    });\n    if (tratadoNaturalmente) return;\n\n    let secretariaIdentificada = false;`,
+  "interceptadores antes do fluxo estruturado"
 );
 
 const moduloBase = new Module(caminhoBase, module);
