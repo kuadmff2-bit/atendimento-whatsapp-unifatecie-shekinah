@@ -424,7 +424,7 @@ function mensagemPrivacidade(instituicao) {
   return (
     `📝 *PRÉ-MATRÍCULA — ${CONFIG[instituicao].nome.toUpperCase()}*\n\n` +
     "Vou pedir os dados necessários, um de cada vez. Eles serão usados somente pela secretaria para atender sua matrícula.\n\n" +
-    "Você pode digitar *menu* a qualquer momento para cancelar e voltar ao início.\n\n" +
+    "Você pode digitar *m* a qualquer momento para cancelar e voltar ao menu.\n\n" +
     "Para continuar, informe o *curso desejado*."
   );
 }
@@ -449,7 +449,7 @@ function finalizarMatriculaUnifatecie(sessao) {
     `📚 Curso desejado: ${d.curso}\n` +
     `📅 Vencimento escolhido: dia ${d.vencimento}\n\n` +
     "Agora um atendente conferirá os dados e continuará a matrícula por esta conversa.\n" +
-    "Para voltar ao atendimento automático, digite *menu*."
+    "Para voltar ao atendimento automático, digite *m*."
   );
 }
 
@@ -470,7 +470,7 @@ function finalizarMatriculaShekinah(sessao) {
       ? `👨 CPF do pai: ${d.cpfPai}\n👩 CPF da mãe: ${d.cpfMae}\n`
       : "") +
     "\nAgora a secretaria conferirá os dados e continuará a matrícula por esta conversa.\n" +
-    "Para voltar ao atendimento automático, digite *menu*."
+    "Para voltar ao atendimento automático, digite *m*."
   );
 }
 
@@ -535,7 +535,7 @@ function detalhesCursoUnifatecie(curso) {
 }
 
 function orientacaoVoltar() {
-  return "\n\nDigite *menu* para voltar ao menu principal.";
+  return "\n\nDigite *m* para voltar ao menu.";
 }
 
 async function resolverDestino(client, destino) {
@@ -591,7 +591,7 @@ async function encaminharParaSecretariaShekinah(client, msg, sessao, problema) {
       "✅ *SOLICITAÇÃO ENCAMINHADA*\n\n" +
         "Enviei seus dados e a descrição do problema para a secretaria da Shekinah.\n" +
         "Ela entrará em contato pelo telefone informado assim que estiver disponível.\n\n" +
-        "Para voltar ao atendimento automático, digite *menu*."
+        "Para voltar ao atendimento automático, digite *m*."
     );
   } catch (error) {
     console.error("❌ Não foi possível avisar a secretaria da Shekinah:", error);
@@ -600,7 +600,7 @@ async function encaminharParaSecretariaShekinah(client, msg, sessao, problema) {
       msg.from,
       "⚠️ Não consegui encaminhar sua solicitação automaticamente neste momento.\n\n" +
         "Fale diretamente com a secretaria pelo WhatsApp: https://wa.me/5592993977312\n\n" +
-        "Para voltar ao atendimento automático, digite *menu*."
+        "Para voltar ao atendimento automático, digite *m*."
     );
   }
 }
@@ -625,7 +625,7 @@ async function processarMatriculaUnifatecie(client, msg, textoOriginal, sessao) 
         client,
         msg.from,
         "⚠️ Esse curso pertence à área da Saúde e não pode ser oferecido em nosso Polo de Barreirinha.\n\n" +
-          "Você pode informar outro curso ou digitar *menu* para voltar ao início."
+          "Você pode informar outro curso ou digitar *m* para voltar ao menu."
       );
       return true;
     }
@@ -950,7 +950,7 @@ async function processarMensagem(client, msg) {
     console.log(`📩 Mensagem privada recebida de ${msg.from}`);
 
     const texto = limparTexto(textoOriginal);
-    const comandoMenu = /^(menu|inicio|comecar|recomecar|oi|ola|bom dia|boa tarde|boa noite)$/.test(texto);
+    const comandoMenu = /^(m|menu|inicio|comecar|recomecar|oi|ola|bom dia|boa tarde|boa noite)$/.test(texto);
 
     if (comandoMenu) {
       sessoes.set(msg.from, novaSessao());
@@ -1009,7 +1009,7 @@ async function processarMensagem(client, msg) {
             msg.from,
             `📝 *PRÉ-MATRÍCULA — ${sessao.curso.toUpperCase()}*\n\n` +
               "Vou pedir os dados necessários, um de cada vez. Eles serão usados somente pela secretaria para atender sua matrícula.\n\n" +
-              "Você pode digitar *menu* a qualquer momento para cancelar.\n\n" +
+              "Você pode digitar *m* a qualquer momento para cancelar.\n\n" +
               "👤 Informe o *nome completo* do aluno."
           );
         } else {
@@ -1029,7 +1029,7 @@ async function processarMensagem(client, msg) {
       await responder(
         client,
         msg.from,
-        "Não encontrei esse curso. Digite um número de *1 a 8*, *voltar* ou *menu*."
+        "Não encontrei esse curso. Digite um número de *1 a 8*, *voltar* ou *m*."
       );
       return;
     }
@@ -1146,7 +1146,7 @@ async function processarMensagem(client, msg) {
         await responder(
           client,
           msg.from,
-          "👩‍💼 Pronto! Seu atendimento foi encaminhado.\n\nUm atendente responderá por esta mesma conversa assim que estiver disponível.\n\nSe quiser voltar ao atendimento automático, digite *menu*."
+          "👩‍💼 Pronto! Seu atendimento foi encaminhado.\n\nUm atendente responderá por esta mesma conversa assim que estiver disponível.\n\nSe quiser voltar ao atendimento automático, digite *m*."
         );
         return;
       }
@@ -1210,7 +1210,7 @@ async function processarMensagem(client, msg) {
           `👤 Aluno: ${sessao.nome}\n` +
           `📝 Solicitação: ${textoOriginal}\n\n` +
           "Um atendente verificará as informações e responderá por esta conversa.\n" +
-          "Para voltar ao atendimento automático, digite *menu*."
+          "Para voltar ao atendimento automático, digite *m*."
       );
       return;
     }
