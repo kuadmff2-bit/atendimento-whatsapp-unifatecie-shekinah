@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "description": "Atendimento automático via WhatsApp para UniFatecie e Centro Educacional Shekinah.",
-  "main": "bootstrap-ia.js",
+  "main": "gateway-ia.js",
   "scripts": {
-    "start": "node bootstrap-ia.js",
-    "check": "node --check index.js && node --check ia-groq.js && node --check bootstrap-ia.js"
+    "start": "node gateway-ia.js",
+    "check": "node --check index.js && node --check ia-groq.js && node --check gateway-ia.js"
   },
   "engines": {
     "node": ">=18.0.0"
