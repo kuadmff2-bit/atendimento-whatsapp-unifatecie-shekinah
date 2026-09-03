@@ -36,6 +36,12 @@ substituirObrigatorio(
 );
 
 substituirObrigatorio(
+  'async function responder(client, destino, mensagem) {\n  await delay(900);\n\n  const destinoResolvido = await resolverDestino(client, destino);',
+  `async function responder(client, destino, mensagem) {\n  const sessaoDestino = sessoes.get(destino);\n  const etapaAtual = String(sessaoDestino?.etapa || "");\n  const fluxoCancelavel =\n    etapaAtual.startsWith("unifatecie_matricula_") ||\n    etapaAtual.startsWith("shekinah_matricula_") ||\n    etapaAtual.startsWith("financeiro_") ||\n    etapaAtual.startsWith("shekinah_secretaria_");\n\n  mensagem = String(mensagem || "").trim();\n\n  const ehConfirmacaoFinal =\n    /PRÉ-MATRÍCULA RECEBIDA|PRE-MATRICULA RECEBIDA/i.test(mensagem);\n\n  if (fluxoCancelavel && !ehConfirmacaoFinal && !/\\bcancelar\\b/i.test(mensagem)) {\n    mensagem += "\\n\\n❌ Para sair deste atendimento, digite *cancelar*.";\n  }\n\n  await delay(900);\n\n  const destinoResolvido = await resolverDestino(client, destino);`,
+  "opção visível de cancelamento"
+);
+
+substituirObrigatorio(
   '    const texto = limparTexto(textoOriginal);\n    let secretariaIdentificada = false;',
   `    const texto = limparTexto(textoOriginal);\n\n    const corrigidoAntesDoFluxo = await tentarCorrecoesAtendimento({\n      client,\n      msg,\n      textoOriginal,\n      texto,\n      sessao,\n      responder,\n    });\n    if (corrigidoAntesDoFluxo) return;\n\n    const tratadoNaturalmente = await tentarConversaNatural({\n      client,\n      msg,\n      textoOriginal,\n      texto,\n      sessao,\n      cursosUnifatecie: CURSOS_UNIFATECIE,\n      config: CONFIG,\n      responder,\n      tentarResponderComIA,\n      iaDisponivel,\n    });\n    if (tratadoNaturalmente) return;\n\n    let secretariaIdentificada = false;`,
   "interceptadores antes do fluxo estruturado"
