@@ -15,31 +15,35 @@ const CONFIG = {
     nome: "UniFatecie — Polo Barreirinha",
     cursos:
       "🎓 *CURSOS E VALORES — UNIFATECIE*\n\n" +
-      "✅ Graduação 100% EAD\n" +
-      "✅ Pedagogia\n" +
-      "✅ Administração\n" +
-      "✅ Análise e Desenvolvimento de Sistemas\n" +
-      "✅ Engenharia de Software\n" +
-      "✅ Gestão Financeira\n" +
-      "✅ Diversas licenciaturas, bacharelados e tecnólogos\n\n" +
-      "💰 Mensalidades a partir de *R$ 112,20*.\n" +
+      "Estude de onde estiver com cursos de graduação *100% EAD*. Temos opções como:\n\n" +
+      "📘 Pedagogia\n" +
+      "📊 Administração\n" +
+      "💻 Análise e Desenvolvimento de Sistemas\n" +
+      "🧑‍💻 Engenharia de Software\n" +
+      "💰 Gestão Financeira\n" +
+      "🎓 Além de diversas licenciaturas, bacharelados e tecnólogos.\n\n" +
+      "💵 Mensalidades a partir de *R$ 112,20*.\n" +
       "O valor pode variar conforme o curso e a campanha vigente.\n\n" +
-      "Para consultar um curso específico, digite *2* e faça uma solicitação de matrícula.",
+      "⚠️ *ATENÇÃO:* cursos da área da Saúde não podem ser oferecidos em nosso Polo de Barreirinha.\n\n" +
+      "Quer consultar a disponibilidade de um curso e iniciar sua matrícula? Digite *2*.",
   },
 
   shekinah: {
     nome: "Centro Educacional Shekinah",
     cursos:
       "📚 *CURSOS E VALORES — SHEKINAH*\n\n" +
-      "💻 Informática completa — *R$ 150,00*\n" +
-      "🇬🇧 Inglês básico — *R$ 150,00*\n" +
-      "🧒 Inglês Kids — *R$ 150,00*\n" +
-      "🎨 Desenho — *R$ 150,00*\n" +
-      "💼 Gestão Empresarial 6 em 1 — *R$ 180,00*\n" +
-      "📖 EJA — valor sob consulta\n\n" +
+      "🧒 Inglês Kids — *R$ 150/mês* | 2 vezes por semana\n" +
+      "💻 Informática Completa — *R$ 150/mês* | 2 vezes por semana\n" +
+      "🖥️ Informática Avançada — *R$ 150/mês* | 2 vezes por semana\n" +
+      "🎨 Desenho Artístico — *R$ 150/mês* | aulas aos sábados\n" +
+      "🎹 Teclado — *R$ 150/mês* | 2 vezes por semana\n" +
+      "📖 Reforço Escolar — *R$ 150/mês* | 2 vezes por semana\n" +
+      "💼 Gestão Empresarial 6 em 1 — *R$ 180/mês* | 3 vezes por semana\n" +
+      "🎓 EJA — informações e valores sob consulta\n\n" +
+      "📝 Matrícula: *R$ 49,90*\n\n" +
       "🔥 *Combos*\n" +
-      "2 cursos — *R$ 180,00*\n" +
-      "3 cursos — *R$ 280,00*\n\n" +
+      "2 cursos — *R$ 180/mês*\n" +
+      "3 cursos — *R$ 280/mês*\n\n" +
       "Para iniciar sua matrícula, digite *2*.",
   },
 };
@@ -88,6 +92,8 @@ function novaSessao() {
     atendimentoHumano: false,
     nome: "",
     curso: "",
+    dados: {},
+    menorDeIdade: false,
     atualizadoEm: Date.now(),
   };
 }
@@ -152,6 +158,139 @@ function nomeValido(nome) {
   return nome.length >= 5 && nome.includes(" ") && /^[A-Za-zÀ-ÿ' -]+$/.test(nome);
 }
 
+function somenteNumeros(valor = "") {
+  return valor.replace(/\D/g, "");
+}
+
+function formatarCpf(valor) {
+  const cpf = somenteNumeros(valor);
+  return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+}
+
+function cpfValido(valor) {
+  const cpf = somenteNumeros(valor);
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+
+  const calcularDigito = (quantidade) => {
+    let soma = 0;
+    for (let i = 0; i < quantidade; i += 1) {
+      soma += Number(cpf[i]) * (quantidade + 1 - i);
+    }
+    const resto = (soma * 10) % 11;
+    return resto === 10 ? 0 : resto;
+  };
+
+  return calcularDigito(9) === Number(cpf[9]) && calcularDigito(10) === Number(cpf[10]);
+}
+
+function dataNascimentoValida(valor) {
+  const correspondencia = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(valor);
+  if (!correspondencia) return null;
+
+  const dia = Number(correspondencia[1]);
+  const mes = Number(correspondencia[2]);
+  const ano = Number(correspondencia[3]);
+  const data = new Date(ano, mes - 1, dia, 12, 0, 0);
+  const agora = new Date();
+
+  if (
+    data.getFullYear() !== ano ||
+    data.getMonth() !== mes - 1 ||
+    data.getDate() !== dia ||
+    data > agora ||
+    ano < 1900
+  ) {
+    return null;
+  }
+
+  return data;
+}
+
+function verificarMenorDeIdade(dataNascimento) {
+  const hoje = new Date();
+  let idade = hoje.getFullYear() - dataNascimento.getFullYear();
+  const aniversarioAindaNaoPassou =
+    hoje.getMonth() < dataNascimento.getMonth() ||
+    (hoje.getMonth() === dataNascimento.getMonth() && hoje.getDate() < dataNascimento.getDate());
+  if (aniversarioAindaNaoPassou) idade -= 1;
+  return idade < 18;
+}
+
+function emailValido(valor) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor) && valor.length <= 120;
+}
+
+function telefoneValido(valor) {
+  const telefone = somenteNumeros(valor);
+  return telefone.length >= 10 && telefone.length <= 13;
+}
+
+function cepValido(valor) {
+  return somenteNumeros(valor).length === 8;
+}
+
+function formatarCep(valor) {
+  return somenteNumeros(valor).replace(/(\d{5})(\d{3})/, "$1-$2");
+}
+
+function textoDentroDoLimite(valor, minimo, maximo) {
+  return valor.length >= minimo && valor.length <= maximo;
+}
+
+function mensagemPrivacidade(instituicao) {
+  return (
+    `📝 *PRÉ-MATRÍCULA — ${CONFIG[instituicao].nome.toUpperCase()}*\n\n` +
+    "Vou pedir os dados necessários, um de cada vez. Eles serão usados somente pela secretaria para atender sua matrícula.\n\n" +
+    "Você pode digitar *menu* a qualquer momento para cancelar e voltar ao início.\n\n" +
+    "Para continuar, informe o *curso desejado*."
+  );
+}
+
+function finalizarMatriculaUnifatecie(sessao) {
+  const d = sessao.dados;
+  return (
+    "✅ *PRÉ-MATRÍCULA RECEBIDA — UNIFATECIE*\n\n" +
+    "👤 *Dados pessoais*\n" +
+    `Nome completo: ${d.nome}\n` +
+    `CPF: ${d.cpf}\n` +
+    `Data de nascimento: ${d.nascimento}\n` +
+    `E-mail: ${d.email}\n` +
+    `Telefone/WhatsApp: ${d.telefone}\n\n` +
+    "🏠 *Endereço*\n" +
+    `Rua/Avenida: ${d.rua}\n` +
+    `Número: ${d.numero}\n` +
+    `Bairro: ${d.bairro}\n` +
+    `Cidade: ${d.cidade}\n` +
+    `Estado: ${d.estado}\n` +
+    `CEP: ${d.cep}\n\n` +
+    `📚 Curso desejado: ${d.curso}\n` +
+    `📅 Vencimento escolhido: dia ${d.vencimento}\n\n` +
+    "Agora um atendente conferirá os dados e continuará a matrícula por esta conversa.\n" +
+    "Para voltar ao atendimento automático, digite *menu*."
+  );
+}
+
+function finalizarMatriculaShekinah(sessao) {
+  const d = sessao.dados;
+  return (
+    "✅ *PRÉ-MATRÍCULA RECEBIDA — SHEKINAH*\n\n" +
+    `📚 Curso(s): ${d.curso}\n` +
+    `👤 Nome completo: ${d.nome}\n` +
+    `📅 Data de nascimento: ${d.nascimento}\n` +
+    `🪪 CPF: ${d.cpf}\n` +
+    `🪪 RG ou CIN: ${d.rg}\n` +
+    `📱 Telefone principal: ${d.telefone}\n` +
+    `☎️ Segundo telefone: ${d.telefone2}\n` +
+    `🏠 Endereço completo: ${d.endereco}\n` +
+    `🧒 Aluno menor de 18 anos: ${sessao.menorDeIdade ? "Sim" : "Não"}\n` +
+    (sessao.menorDeIdade
+      ? `👨 CPF do pai: ${d.cpfPai}\n👩 CPF da mãe: ${d.cpfMae}\n`
+      : "") +
+    "\nAgora a secretaria conferirá os dados e continuará a matrícula por esta conversa.\n" +
+    "Para voltar ao atendimento automático, digite *menu*."
+  );
+}
+
 function menuInicial() {
   return (
     `${obterSaudacao()}! 👋\n\n` +
@@ -185,6 +324,327 @@ async function responder(client, destino, mensagem) {
   await client.sendText(destino, mensagem);
 }
 
+async function processarMatriculaUnifatecie(client, msg, textoOriginal, sessao) {
+  const d = sessao.dados;
+
+  if (sessao.etapa === "unifatecie_matricula_curso") {
+    if (!textoDentroDoLimite(textoOriginal, 2, 100)) {
+      await responder(client, msg.from, "Digite o nome do curso desejado.");
+      return true;
+    }
+
+    const curso = limparTexto(textoOriginal);
+    const termosSaude = [
+      "enfermagem", "farmacia", "biomedicina", "fisioterapia", "nutricao",
+      "odontologia", "medicina", "terapia ocupacional", "fonoaudiologia",
+      "radiologia", "estetica", "educacao fisica",
+    ];
+    if (termosSaude.some((termo) => curso.includes(termo))) {
+      await responder(
+        client,
+        msg.from,
+        "⚠️ Esse curso pertence à área da Saúde e não pode ser oferecido em nosso Polo de Barreirinha.\n\n" +
+          "Você pode informar outro curso ou digitar *menu* para voltar ao início."
+      );
+      return true;
+    }
+
+    d.curso = textoOriginal;
+    sessao.etapa = "unifatecie_matricula_nome";
+    await responder(client, msg.from, "👤 *Dados pessoais*\n\nInforme o *nome completo* do aluno.");
+    return true;
+  }
+
+  if (sessao.etapa === "unifatecie_matricula_nome") {
+    if (!nomeValido(textoOriginal)) {
+      await responder(client, msg.from, "Informe o nome completo, com nome e sobrenome.");
+      return true;
+    }
+    d.nome = textoOriginal;
+    sessao.nome = textoOriginal;
+    sessao.etapa = "unifatecie_matricula_cpf";
+    await responder(client, msg.from, `Obrigado, ${primeiroNome(d.nome)}! 😊\n\nInforme o *CPF* do aluno.`);
+    return true;
+  }
+
+  if (sessao.etapa === "unifatecie_matricula_cpf") {
+    if (!cpfValido(textoOriginal)) {
+      await responder(client, msg.from, "CPF inválido. Digite os *11 números do CPF*.");
+      return true;
+    }
+    d.cpf = formatarCpf(textoOriginal);
+    sessao.etapa = "unifatecie_matricula_nascimento";
+    await responder(client, msg.from, "Informe a *data de nascimento* no formato *DD/MM/AAAA*.");
+    return true;
+  }
+
+  if (sessao.etapa === "unifatecie_matricula_nascimento") {
+    if (!dataNascimentoValida(textoOriginal)) {
+      await responder(client, msg.from, "Data inválida. Digite no formato *DD/MM/AAAA*.");
+      return true;
+    }
+    d.nascimento = textoOriginal;
+    sessao.etapa = "unifatecie_matricula_email";
+    await responder(client, msg.from, "Informe o *e-mail* do aluno.");
+    return true;
+  }
+
+  if (sessao.etapa === "unifatecie_matricula_email") {
+    if (!emailValido(textoOriginal)) {
+      await responder(client, msg.from, "E-mail inválido. Digite um endereço como *nome@exemplo.com*.");
+      return true;
+    }
+    d.email = textoOriginal.toLowerCase();
+    sessao.etapa = "unifatecie_matricula_telefone";
+    await responder(client, msg.from, "Informe o *telefone/WhatsApp com DDD*.");
+    return true;
+  }
+
+  if (sessao.etapa === "unifatecie_matricula_telefone") {
+    if (!telefoneValido(textoOriginal)) {
+      await responder(client, msg.from, "Telefone inválido. Digite o número com DDD.");
+      return true;
+    }
+    d.telefone = textoOriginal;
+    sessao.etapa = "unifatecie_matricula_rua";
+    await responder(client, msg.from, "🏠 *Endereço*\n\nInforme a *Rua ou Avenida*.");
+    return true;
+  }
+
+  if (sessao.etapa === "unifatecie_matricula_rua") {
+    if (!textoDentroDoLimite(textoOriginal, 2, 120)) {
+      await responder(client, msg.from, "Informe o nome da Rua ou Avenida em até 120 caracteres.");
+      return true;
+    }
+    d.rua = textoOriginal;
+    sessao.etapa = "unifatecie_matricula_numero";
+    await responder(client, msg.from, "Informe o *número* do endereço. Se não houver, digite *S/N*.");
+    return true;
+  }
+
+  if (sessao.etapa === "unifatecie_matricula_numero") {
+    if (!textoDentroDoLimite(textoOriginal, 1, 20)) {
+      await responder(client, msg.from, "Informe um número válido ou digite *S/N*.");
+      return true;
+    }
+    d.numero = textoOriginal;
+    sessao.etapa = "unifatecie_matricula_bairro";
+    await responder(client, msg.from, "Informe o *bairro*.");
+    return true;
+  }
+
+  if (sessao.etapa === "unifatecie_matricula_bairro") {
+    if (!textoDentroDoLimite(textoOriginal, 2, 80)) {
+      await responder(client, msg.from, "Informe um bairro válido.");
+      return true;
+    }
+    d.bairro = textoOriginal;
+    sessao.etapa = "unifatecie_matricula_cidade";
+    await responder(client, msg.from, "Informe a *cidade*.");
+    return true;
+  }
+
+  if (sessao.etapa === "unifatecie_matricula_cidade") {
+    if (!textoDentroDoLimite(textoOriginal, 2, 80)) {
+      await responder(client, msg.from, "Informe uma cidade válida.");
+      return true;
+    }
+    d.cidade = textoOriginal;
+    sessao.etapa = "unifatecie_matricula_estado";
+    await responder(client, msg.from, "Informe o *Estado* ou a sigla, por exemplo: *Amazonas* ou *AM*.");
+    return true;
+  }
+
+  if (sessao.etapa === "unifatecie_matricula_estado") {
+    if (!/^[A-Za-zÀ-ÿ ]{2,30}$/.test(textoOriginal)) {
+      await responder(client, msg.from, "Informe um Estado válido, por exemplo: *Amazonas* ou *AM*.");
+      return true;
+    }
+    d.estado = textoOriginal.toUpperCase();
+    sessao.etapa = "unifatecie_matricula_cep";
+    await responder(client, msg.from, "Informe o *CEP* com 8 números.");
+    return true;
+  }
+
+  if (sessao.etapa === "unifatecie_matricula_cep") {
+    if (!cepValido(textoOriginal)) {
+      await responder(client, msg.from, "CEP inválido. Digite os *8 números do CEP*.");
+      return true;
+    }
+    d.cep = formatarCep(textoOriginal);
+    sessao.etapa = "unifatecie_matricula_vencimento";
+    await responder(
+      client,
+      msg.from,
+      "💳 *Escolha o dia de vencimento da mensalidade:*\n\n" +
+        "1️⃣ Dia 05\n" +
+        "2️⃣ Dia 07\n" +
+        "3️⃣ Dia 10\n\n" +
+        "Digite apenas *1*, *2* ou *3*."
+    );
+    return true;
+  }
+
+  if (sessao.etapa === "unifatecie_matricula_vencimento") {
+    const vencimentos = { "1": "05", "2": "07", "3": "10", "05": "05", "07": "07", "10": "10" };
+    if (!vencimentos[textoOriginal]) {
+      await responder(client, msg.from, "Opção inválida. Digite *1* para dia 05, *2* para dia 07 ou *3* para dia 10.");
+      return true;
+    }
+    d.vencimento = vencimentos[textoOriginal];
+    sessao.atendimentoHumano = true;
+    sessao.etapa = "atendimento_humano";
+    await responder(client, msg.from, finalizarMatriculaUnifatecie(sessao));
+    return true;
+  }
+
+  return false;
+}
+
+async function processarMatriculaShekinah(client, msg, textoOriginal, sessao) {
+  const d = sessao.dados;
+  const texto = limparTexto(textoOriginal);
+
+  if (sessao.etapa === "shekinah_matricula_curso") {
+    if (!textoDentroDoLimite(textoOriginal, 2, 150)) {
+      await responder(client, msg.from, "Informe o curso ou os cursos desejados.");
+      return true;
+    }
+    d.curso = textoOriginal;
+    sessao.etapa = "shekinah_matricula_nome";
+    await responder(client, msg.from, "👤 Informe o *nome completo* do aluno.");
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_nome") {
+    if (!nomeValido(textoOriginal)) {
+      await responder(client, msg.from, "Informe o nome completo, com nome e sobrenome.");
+      return true;
+    }
+    d.nome = textoOriginal;
+    sessao.nome = textoOriginal;
+    sessao.etapa = "shekinah_matricula_nascimento";
+    await responder(client, msg.from, `Obrigado, ${primeiroNome(d.nome)}! 😊\n\nInforme a *data de nascimento* no formato *DD/MM/AAAA*.`);
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_nascimento") {
+    const nascimento = dataNascimentoValida(textoOriginal);
+    if (!nascimento) {
+      await responder(client, msg.from, "Data inválida. Digite no formato *DD/MM/AAAA*.");
+      return true;
+    }
+    d.nascimento = textoOriginal;
+    sessao.menorDeIdade = verificarMenorDeIdade(nascimento);
+    sessao.etapa = "shekinah_matricula_cpf";
+    await responder(client, msg.from, "Informe o *CPF* do aluno.");
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_cpf") {
+    if (!cpfValido(textoOriginal)) {
+      await responder(client, msg.from, "CPF inválido. Digite os *11 números do CPF*.");
+      return true;
+    }
+    d.cpf = formatarCpf(textoOriginal);
+    sessao.etapa = "shekinah_matricula_rg";
+    await responder(
+      client,
+      msg.from,
+      "Informe o *RG ou a nova Carteira de Identidade Nacional (CIN)*.\n\n" +
+        "Na nova identidade, o número pode ser o mesmo do CPF."
+    );
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_rg") {
+    if (!textoDentroDoLimite(textoOriginal, 5, 20)) {
+      await responder(client, msg.from, "Informe um RG ou CIN válido, com no máximo 20 caracteres.");
+      return true;
+    }
+    d.rg = textoOriginal;
+    sessao.etapa = "shekinah_matricula_telefone";
+    await responder(client, msg.from, "Informe o *telefone principal com DDD*.");
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_telefone") {
+    if (!telefoneValido(textoOriginal)) {
+      await responder(client, msg.from, "Telefone inválido. Digite o número com DDD.");
+      return true;
+    }
+    d.telefone = textoOriginal;
+    sessao.etapa = "shekinah_matricula_telefone2";
+    await responder(
+      client,
+      msg.from,
+      "Informe um *segundo telefone com DDD*. Se não quiser informar, digite *não*."
+    );
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_telefone2") {
+    if (["nao", "pular", "nenhum"].includes(texto)) {
+      d.telefone2 = "Não informado";
+    } else if (telefoneValido(textoOriginal)) {
+      d.telefone2 = textoOriginal;
+    } else {
+      await responder(client, msg.from, "Digite um telefone com DDD ou responda *não*.");
+      return true;
+    }
+    sessao.etapa = "shekinah_matricula_endereco";
+    await responder(client, msg.from, "Informe o *endereço completo*: rua, número, bairro ou comunidade.");
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_endereco") {
+    if (!textoDentroDoLimite(textoOriginal, 5, 180)) {
+      await responder(client, msg.from, "Informe o endereço completo em até 180 caracteres.");
+      return true;
+    }
+    d.endereco = textoOriginal;
+    if (sessao.menorDeIdade) {
+      sessao.etapa = "shekinah_matricula_cpf_pai";
+      await responder(
+        client,
+        msg.from,
+        "🧒 Como o aluno tem menos de 18 anos, precisamos dos dados dos responsáveis.\n\nInforme o *CPF do pai*."
+      );
+      return true;
+    }
+
+    sessao.atendimentoHumano = true;
+    sessao.etapa = "atendimento_humano";
+    await responder(client, msg.from, finalizarMatriculaShekinah(sessao));
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_cpf_pai") {
+    if (!cpfValido(textoOriginal)) {
+      await responder(client, msg.from, "CPF inválido. Digite os *11 números do CPF do pai*.");
+      return true;
+    }
+    d.cpfPai = formatarCpf(textoOriginal);
+    sessao.etapa = "shekinah_matricula_cpf_mae";
+    await responder(client, msg.from, "Agora informe o *CPF da mãe*.");
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_cpf_mae") {
+    if (!cpfValido(textoOriginal)) {
+      await responder(client, msg.from, "CPF inválido. Digite os *11 números do CPF da mãe*.");
+      return true;
+    }
+    d.cpfMae = formatarCpf(textoOriginal);
+    sessao.atendimentoHumano = true;
+    sessao.etapa = "atendimento_humano";
+    await responder(client, msg.from, finalizarMatriculaShekinah(sessao));
+    return true;
+  }
+
+  return false;
+}
+
 // =====================================
 // FUNIL DE ATENDIMENTO
 // =====================================
@@ -206,8 +666,7 @@ async function processarMensagem(client, msg) {
     const textoOriginal = typeof msg.body === "string" ? msg.body.trim() : "";
     if (!textoOriginal) return;
 
-    const previa = textoOriginal.replace(/\s+/g, " ").slice(0, 80);
-    console.log(`📩 Mensagem privada recebida de ${msg.from}: ${previa}`);
+    console.log(`📩 Mensagem privada recebida de ${msg.from}`);
 
     const texto = limparTexto(textoOriginal);
     const comandoMenu = /^(menu|inicio|comecar|recomecar|oi|ola|bom dia|boa tarde|boa noite)$/.test(texto);
@@ -262,11 +721,16 @@ async function processarMensagem(client, msg) {
       }
 
       if (texto === "2") {
-        sessao.etapa = "matricula_nome";
+        sessao.dados = {};
+        sessao.menorDeIdade = false;
+        sessao.etapa =
+          sessao.instituicao === "unifatecie"
+            ? "unifatecie_matricula_curso"
+            : "shekinah_matricula_curso";
         await responder(
           client,
           msg.from,
-          "📝 *SOLICITAÇÃO DE MATRÍCULA*\n\nPara começar, informe o *nome completo do aluno*."
+          mensagemPrivacidade(sessao.instituicao)
         );
         return;
       }
@@ -300,47 +764,12 @@ async function processarMensagem(client, msg) {
       return;
     }
 
-    if (sessao.etapa === "matricula_nome") {
-      if (!nomeValido(textoOriginal)) {
-        await responder(
-          client,
-          msg.from,
-          "Por favor, informe o *nome completo do aluno*, com nome e sobrenome."
-        );
-        return;
-      }
-
-      sessao.nome = textoOriginal;
-      sessao.etapa = "matricula_curso";
-      await responder(
-        client,
-        msg.from,
-        `Obrigado, ${primeiroNome(sessao.nome)}! 😊\n\nQual *curso* você deseja fazer?`
-      );
-      return;
+    if (sessao.etapa.startsWith("unifatecie_matricula_")) {
+      if (await processarMatriculaUnifatecie(client, msg, textoOriginal, sessao)) return;
     }
 
-    if (sessao.etapa === "matricula_curso") {
-      if (textoOriginal.length < 2 || textoOriginal.length > 100) {
-        await responder(client, msg.from, "Digite o nome do curso desejado.");
-        return;
-      }
-
-      sessao.curso = textoOriginal;
-      sessao.atendimentoHumano = true;
-      sessao.etapa = "atendimento_humano";
-
-      await responder(
-        client,
-        msg.from,
-        "✅ *SOLICITAÇÃO REGISTRADA*\n\n" +
-          `🏫 Instituição: ${CONFIG[sessao.instituicao].nome}\n` +
-          `👤 Aluno: ${sessao.nome}\n` +
-          `📚 Curso: ${sessao.curso}\n\n` +
-          "Agora um atendente continuará sua matrícula por esta conversa.\n" +
-          "Para voltar ao atendimento automático, digite *menu*."
-      );
-      return;
+    if (sessao.etapa.startsWith("shekinah_matricula_")) {
+      if (await processarMatriculaShekinah(client, msg, textoOriginal, sessao)) return;
     }
 
     if (sessao.etapa === "financeiro_nome") {
