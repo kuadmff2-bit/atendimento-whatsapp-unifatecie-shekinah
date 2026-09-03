@@ -205,11 +205,40 @@ function obterSaudacao() {
   return "Boa noite";
 }
 
-async function enviarDigitando(chat, destino, mensagem) {
-  await chat.sendStateTyping();
-  await delay(1200);
-  await client.sendMessage(destino, mensagem);
-  await chat.clearState();
+async function enviarResposta(msg, mensagem) {
+  await delay(900);
+
+  const enviada = await client.pupPage.evaluate(
+    async (idMensagem, conteudo) => {
+      const colecoes = window.require("WAWebCollections");
+      let mensagemOriginal = colecoes.Msg.get(idMensagem);
+
+      if (!mensagemOriginal) {
+        mensagemOriginal = (
+          await colecoes.Msg.getMessagesById([idMensagem])
+        )?.messages?.[0];
+      }
+
+      if (!mensagemOriginal) return false;
+
+      const remoto = mensagemOriginal.id?.remote;
+      const conversa =
+        mensagemOriginal.chat ||
+        colecoes.Chat.get(remoto) ||
+        colecoes.Chat.get(remoto?._serialized);
+
+      if (!conversa) return false;
+
+      const resultado = await window.WWebJS.sendMessage(conversa, conteudo, {});
+      return Boolean(resultado);
+    },
+    msg.id._serialized,
+    mensagem
+  );
+
+  if (!enviada) {
+    throw new Error("Não foi possível localizar a conversa para responder.");
+  }
 }
 
 function menuInicial() {
@@ -280,9 +309,6 @@ async function processarMensagem(msg) {
       return;
     }
 
-    const chat = await msg.getChat();
-    if (chat.isGroup) return;
-
     const textoOriginal = msg.body ? msg.body.trim() : "";
     if (!textoOriginal) return;
 
@@ -295,7 +321,7 @@ async function processarMensagem(msg) {
     // "menu" sempre encerra o fluxo atual e recomeça o atendimento.
     if (comandoMenu) {
       sessoes.set(msg.from, novaSessao());
-      await enviarDigitando(chat, msg.from, menuInicial());
+      await enviarResposta(msg, menuInicial());
       return;
     }
 
@@ -311,20 +337,19 @@ async function processarMensagem(msg) {
       if (texto === "1" || texto.includes("unifatecie")) {
         sessao.instituicao = "unifatecie";
         sessao.etapa = "menu_instituicao";
-        await enviarDigitando(chat, msg.from, menuInstituicao("unifatecie"));
+        await enviarResposta(msg, menuInstituicao("unifatecie"));
         return;
       }
 
       if (texto === "2" || texto.includes("shekinah")) {
         sessao.instituicao = "shekinah";
         sessao.etapa = "menu_instituicao";
-        await enviarDigitando(chat, msg.from, menuInstituicao("shekinah"));
+        await enviarResposta(msg, menuInstituicao("shekinah"));
         return;
       }
 
-      await enviarDigitando(
-        chat,
-        msg.from,
+      await enviarResposta(
+          msg,
         "Não consegui identificar a instituição. 😊\n\nDigite:\n*1* para UniFatecie\n*2* para Shekinah"
       );
       return;
@@ -337,14 +362,13 @@ async function processarMensagem(msg) {
       if (texto === "0") {
         sessao.etapa = "escolher_instituicao";
         sessao.instituicao = null;
-        await enviarDigitando(chat, msg.from, menuInicial());
+        await enviarResposta(msg, menuInicial());
         return;
       }
 
       if (texto === "1") {
-        await enviarDigitando(
-          chat,
-          msg.from,
+        await enviarResposta(
+          msg,
           CONFIG[sessao.instituicao].cursos + orientacaoVoltar()
         );
         return;
@@ -352,9 +376,8 @@ async function processarMensagem(msg) {
 
       if (texto === "2") {
         sessao.etapa = "matricula_nome";
-        await enviarDigitando(
-          chat,
-          msg.from,
+        await enviarResposta(
+          msg,
           "📝 *SOLICITAÇÃO DE MATRÍCULA*\n\nPara começar, informe o *nome completo do aluno*."
         );
         return;
@@ -362,9 +385,8 @@ async function processarMensagem(msg) {
 
       if (texto === "3") {
         sessao.etapa = "financeiro_nome";
-        await enviarDigitando(
-          chat,
-          msg.from,
+        await enviarResposta(
+          msg,
           "💳 *FINANCEIRO E MENSALIDADES*\n\nInforme o *nome completo do aluno*."
         );
         return;
@@ -373,17 +395,15 @@ async function processarMensagem(msg) {
       if (texto === "4") {
         sessao.atendimentoHumano = true;
         sessao.etapa = "atendimento_humano";
-        await enviarDigitando(
-          chat,
-          msg.from,
+        await enviarResposta(
+          msg,
           "👩‍💼 Pronto! Seu atendimento foi encaminhado.\n\nUm atendente responderá por esta mesma conversa assim que estiver disponível.\n\nSe quiser voltar ao atendimento automático, digite *menu*."
         );
         return;
       }
 
-      await enviarDigitando(
-        chat,
-        msg.from,
+      await enviarResposta(
+          msg,
         "Opção inválida. Digite um número de *1 a 4* ou *0* para trocar de instituição."
       );
       return;
@@ -394,9 +414,8 @@ async function processarMensagem(msg) {
     // -------------------------------------
     if (sessao.etapa === "matricula_nome") {
       if (!nomeValido(textoOriginal)) {
-        await enviarDigitando(
-          chat,
-          msg.from,
+        await enviarResposta(
+          msg,
           "Por favor, informe o *nome completo do aluno*, com nome e sobrenome."
         );
         return;
@@ -404,9 +423,8 @@ async function processarMensagem(msg) {
 
       sessao.nome = textoOriginal;
       sessao.etapa = "matricula_curso";
-      await enviarDigitando(
-        chat,
-        msg.from,
+      await enviarResposta(
+          msg,
         `Obrigado, ${primeiroNome(sessao.nome)}! 😊\n\nQual *curso* você deseja fazer?`
       );
       return;
@@ -414,7 +432,7 @@ async function processarMensagem(msg) {
 
     if (sessao.etapa === "matricula_curso") {
       if (textoOriginal.length < 2 || textoOriginal.length > 100) {
-        await enviarDigitando(chat, msg.from, "Digite o nome do curso desejado.");
+        await enviarResposta(msg, "Digite o nome do curso desejado.");
         return;
       }
 
@@ -422,9 +440,8 @@ async function processarMensagem(msg) {
       sessao.atendimentoHumano = true;
       sessao.etapa = "atendimento_humano";
 
-      await enviarDigitando(
-        chat,
-        msg.from,
+      await enviarResposta(
+          msg,
         "✅ *SOLICITAÇÃO REGISTRADA*\n\n" +
           `🏫 Instituição: ${CONFIG[sessao.instituicao].nome}\n` +
           `👤 Aluno: ${sessao.nome}\n` +
@@ -440,9 +457,8 @@ async function processarMensagem(msg) {
     // -------------------------------------
     if (sessao.etapa === "financeiro_nome") {
       if (!nomeValido(textoOriginal)) {
-        await enviarDigitando(
-          chat,
-          msg.from,
+        await enviarResposta(
+          msg,
           "Por favor, informe o *nome completo do aluno*, com nome e sobrenome."
         );
         return;
@@ -450,9 +466,8 @@ async function processarMensagem(msg) {
 
       sessao.nome = textoOriginal;
       sessao.etapa = "financeiro_assunto";
-      await enviarDigitando(
-        chat,
-        msg.from,
+      await enviarResposta(
+          msg,
         "Conte resumidamente o que você precisa.\n\n" +
           "Exemplos: segunda via, vencimento, mensalidade em aberto ou confirmação de pagamento.\n\n" +
           "🔒 Não envie senha, código de acesso ou dados do cartão."
@@ -462,9 +477,8 @@ async function processarMensagem(msg) {
 
     if (sessao.etapa === "financeiro_assunto") {
       if (textoOriginal.length < 3 || textoOriginal.length > 500) {
-        await enviarDigitando(
-          chat,
-          msg.from,
+        await enviarResposta(
+          msg,
           "Descreva o pedido em uma mensagem de até 500 caracteres."
         );
         return;
@@ -473,9 +487,8 @@ async function processarMensagem(msg) {
       sessao.atendimentoHumano = true;
       sessao.etapa = "atendimento_humano";
 
-      await enviarDigitando(
-        chat,
-        msg.from,
+      await enviarResposta(
+          msg,
         "✅ *SOLICITAÇÃO FINANCEIRA RECEBIDA*\n\n" +
           `🏫 Instituição: ${CONFIG[sessao.instituicao].nome}\n` +
           `👤 Aluno: ${sessao.nome}\n` +
@@ -488,7 +501,7 @@ async function processarMensagem(msg) {
 
     // Proteção para qualquer estado inesperado.
     sessoes.set(msg.from, novaSessao());
-    await enviarDigitando(chat, msg.from, menuInicial());
+    await enviarResposta(msg, menuInicial());
   } catch (error) {
     // Permite uma nova tentativa caso o primeiro evento tenha falhado.
     if (idMensagem) mensagensProcessadas.delete(idMensagem);
