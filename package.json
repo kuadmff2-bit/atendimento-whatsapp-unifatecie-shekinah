@@ -12,7 +12,6 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "github:wwebjs/whatsapp-web.js#942d236a11ad68807308b058303ba5256915979c"
+    "@wppconnect-team/wppconnect": "2.3.1"
   }
 }
