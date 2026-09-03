@@ -446,9 +446,38 @@ function orientacaoVoltar() {
   return "\n\nDigite *menu* para voltar ao menu principal.";
 }
 
+async function resolverDestino(client, destino) {
+  if (!destino.endsWith("@lid")) return destino;
+
+  try {
+    const mapeamento = await client.getPnLidEntry(destino);
+    const numeroWhatsApp = mapeamento?.phoneNumber?._serialized;
+
+    if (numeroWhatsApp?.endsWith("@c.us")) {
+      console.log(`🔎 Contato LID resolvido para ${numeroWhatsApp}`);
+      return numeroWhatsApp;
+    }
+
+    console.warn(`⚠️ Não foi possível converter ${destino}; tentando responder diretamente.`);
+  } catch (error) {
+    console.warn(`⚠️ Falha ao consultar o número de ${destino}: ${error.message}`);
+  }
+
+  return destino;
+}
+
 async function responder(client, destino, mensagem) {
   await delay(900);
-  await client.sendText(destino, mensagem);
+
+  const destinoResolvido = await resolverDestino(client, destino);
+  console.log(`📤 Enviando resposta para ${destinoResolvido}...`);
+
+  const resultado = await client.sendText(destinoResolvido, mensagem);
+  if (!resultado) {
+    throw new Error("O WhatsApp não confirmou o envio da resposta.");
+  }
+
+  console.log(`✅ Resposta enviada para ${destinoResolvido}.`);
 }
 
 async function processarMatriculaUnifatecie(client, msg, textoOriginal, sessao) {
