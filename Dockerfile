@@ -21,7 +21,7 @@ COPY package.json ./
 RUN npm install --omit=dev \
     && npm cache clean --force
 
-COPY index.js ia-groq.js bootstrap-ia.js ./
+COPY index.js ia-groq.js gateway-ia.js ./
 RUN mkdir -p /app/tokens
 
 CMD ["npm", "start"]
