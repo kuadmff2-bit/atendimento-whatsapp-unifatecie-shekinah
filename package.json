@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && node --check legacy-index.js && node --check ia-groq.js && node --check ia-groq-ext.js && node --check conversation-core.js && node --check atendimento-fixes.js && node --check shekinah-info.js"
+    "check": "node --check index.js && node --check legacy-index.js && node --check ia-groq.js && node --check ia-groq-ext.js && node --check conversation-core.js && node --check atendimento-fixes.js && node --check shekinah-info.js && node --check shekinah-forward.js"
   },
   "engines": {
     "node": ">=18.0.0"
