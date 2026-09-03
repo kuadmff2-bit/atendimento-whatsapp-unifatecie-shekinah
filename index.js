@@ -169,6 +169,41 @@ function iniciarServidorQr() {
 
 iniciarServidorQr();
 
+function removerTravasAntigasDoChromium() {
+  if (windows) return;
+
+  const pastaTokens = path.join(process.cwd(), "tokens");
+  const nomesTrava = new Set(["SingletonLock", "SingletonSocket", "SingletonCookie"]);
+  const pastasPendentes = [pastaTokens];
+  let removidas = 0;
+
+  try {
+    if (!fs.existsSync(pastaTokens)) return;
+
+    while (pastasPendentes.length > 0) {
+      const pastaAtual = pastasPendentes.pop();
+      const itens = fs.readdirSync(pastaAtual, { withFileTypes: true });
+
+      for (const item of itens) {
+        const caminhoItem = path.join(pastaAtual, item.name);
+
+        if (nomesTrava.has(item.name)) {
+          fs.rmSync(caminhoItem, { recursive: true, force: true });
+          removidas += 1;
+        } else if (item.isDirectory()) {
+          pastasPendentes.push(caminhoItem);
+        }
+      }
+    }
+
+    if (removidas > 0) {
+      console.log(`🧹 ${removidas} trava(s) antiga(s) do Chromium removida(s).`);
+    }
+  } catch (error) {
+    console.warn("⚠️ Não foi possível limpar uma trava antiga do Chromium:", error.message);
+  }
+}
+
 // =====================================
 // SESSÕES DO ATENDIMENTO
 // =====================================
@@ -929,6 +964,7 @@ async function iniciar() {
     }
 
     console.log("🚀 Iniciando atendimento pelo WPPConnect...");
+    removerTravasAntigasDoChromium();
 
     const puppeteerOptions = { timeout: 120000 };
     if (caminhoNavegador) puppeteerOptions.executablePath = caminhoNavegador;
@@ -976,7 +1012,7 @@ async function iniciar() {
     });
   } catch (error) {
     console.error("❌ Não foi possível iniciar o atendimento:", error);
-    process.exitCode = 1;
+    setTimeout(() => process.exit(1), 1500);
   }
 }
 
