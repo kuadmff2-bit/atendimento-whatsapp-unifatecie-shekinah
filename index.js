@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const crypto = require("crypto");
+const { iaDisponivel, tentarResponderComIA } = require("./ia-groq");
 
 // =====================================
 // TEXTOS E VALORES EDITÁVEIS
@@ -711,6 +712,21 @@ async function responder(client, destino, mensagem) {
   return enviarTextoDireto(client, destinoResolvido, mensagem);
 }
 
+
+async function responderFallbackComIA(client, msg, textoOriginal, sessao) {
+  const respostaIA = await tentarResponderComIA({
+    textoOriginal,
+    sessao,
+    cursosUnifatecie: CURSOS_UNIFATECIE,
+    config: CONFIG,
+  });
+
+  if (!respostaIA) return false;
+
+  await responder(client, msg.from, `🤖 ${respostaIA}`);
+  return true;
+}
+
 async function enviarTextoDireto(client, destino, mensagem) {
   console.log(`📤 Enviando resposta para ${destino}...`);
 
@@ -1184,6 +1200,7 @@ async function processarMensagem(client, msg) {
       texto === "1" || texto === "2" || texto.includes("unifatecie") || texto.includes("shekinah");
 
     if (primeiraInteracao && !escolheuInstituicaoDiretamente) {
+      if (await responderFallbackComIA(client, msg, textoOriginal, sessao)) return;
       await responder(client, msg.from, menuInicial());
       return;
     }
@@ -1479,6 +1496,11 @@ async function iniciar() {
     }
 
     console.log("🚀 Iniciando atendimento pelo WPPConnect...");
+    console.log(
+      iaDisponivel()
+        ? "🤖 IA Groq ativada para perguntas gerais."
+        : "ℹ️ IA Groq desativada: configure GROQ_API_KEY no Railway para ativar."
+    );
     removerTravasAntigasDoChromium();
 
     const puppeteerOptions = { timeout: 120000 };
