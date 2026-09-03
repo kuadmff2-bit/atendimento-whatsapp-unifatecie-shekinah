@@ -147,7 +147,7 @@ function iniciarServidorQr() {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
 
-    if (caminhoSolicitado !== caminhoQr) {
+    if (caminhoSolicitado !== "/" && caminhoSolicitado !== caminhoQr) {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
       res.end("Página não encontrada.");
       return;
