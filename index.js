@@ -143,6 +143,29 @@ const caminhoNavegador = encontrarNavegador();
 let qrCodeImagem = null;
 let whatsappConectado = false;
 const acessoQr = process.env.QR_ACCESS_TOKEN || crypto.randomBytes(18).toString("hex");
+const linksTemporariosSecretaria = new Map();
+
+function criarLinkTemporarioSecretaria(mensagem) {
+  const dominio = process.env.RAILWAY_PUBLIC_DOMAIN;
+  const destinoCompleto =
+    `https://wa.me/${WHATSAPP_SECRETARIA_SHEKINAH}?text=` + encodeURIComponent(mensagem);
+
+  if (!dominio) return destinoCompleto;
+
+  const token = crypto.randomBytes(12).toString("hex");
+  linksTemporariosSecretaria.set(token, {
+    destino: destinoCompleto,
+    expiraEm: Date.now() + 24 * 60 * 60 * 1000,
+  });
+
+  const limpeza = setTimeout(
+    () => linksTemporariosSecretaria.delete(token),
+    24 * 60 * 60 * 1000
+  );
+  limpeza.unref();
+
+  return `https://${dominio}/secretaria/${token}`;
+}
 
 function criarPaginaQr() {
   let conteudo;
@@ -202,6 +225,22 @@ function iniciarServidorQr() {
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
+
+    const rotaSecretaria = caminhoSolicitado.match(/^\/secretaria\/([a-f0-9]{24})$/);
+    if (rotaSecretaria) {
+      const link = linksTemporariosSecretaria.get(rotaSecretaria[1]);
+
+      if (!link || link.expiraEm < Date.now()) {
+        linksTemporariosSecretaria.delete(rotaSecretaria[1]);
+        res.writeHead(410, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("Este link expirou. Volte ao atendimento e faça uma nova solicitação.");
+        return;
+      }
+
+      res.writeHead(302, { Location: link.destino });
+      res.end();
+      return;
+    }
 
     if (caminhoSolicitado !== "/" && caminhoSolicitado !== caminhoQr) {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
@@ -650,9 +689,7 @@ async function encaminharParaSecretariaShekinah(client, msg, sessao, problema) {
     );
   } catch (error) {
     console.error("❌ Não foi possível avisar a secretaria da Shekinah:", error);
-    const linkComMensagem =
-      `https://wa.me/${WHATSAPP_SECRETARIA_SHEKINAH}?text=` +
-      encodeURIComponent(mensagemSecretaria);
+    const linkComMensagem = criarLinkTemporarioSecretaria(mensagemSecretaria);
 
     await responder(
       client,
