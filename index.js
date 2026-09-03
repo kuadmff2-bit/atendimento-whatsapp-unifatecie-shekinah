@@ -319,6 +319,22 @@ function limparTexto(texto = "") {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+function ehMensagemDeInicio(texto) {
+  const mensagem = texto
+    .replace(/[!?.,;:]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const saudacoes =
+    /^(oi+|ola+|opa+|alo+|ei+|e ai|hey+|hello|salve|bom dia|boa tarde|boa noite)(\b.*)?$/;
+  const pedidosDiretos =
+    /^(iniciar|inicie|comecar|comece|recomecar|reiniciar|start|atendimento|atendente|ajuda|informacao|informacoes|quero informacoes|quero atendimento|falar com atendente)$/;
+  const pedidosEmFrase =
+    /^(quero|preciso|gostaria|desejo).*(atendimento|atendente|ajuda|informacao|informacoes|saber mais)/;
+
+  return saudacoes.test(mensagem) || pedidosDiretos.test(mensagem) || pedidosEmFrase.test(mensagem);
+}
+
 function obterSaudacao() {
   const hora = Number(
     new Intl.DateTimeFormat("pt-BR", {
@@ -988,21 +1004,37 @@ async function processarMensagem(client, msg) {
       return;
     }
 
+    const primeiraInteracao = !sessoes.has(msg.from);
+    const sessao = obterSessao(msg.from);
     const textoOriginal = typeof msg.body === "string" ? msg.body.trim() : "";
-    if (!textoOriginal) return;
+
+    if (!textoOriginal) {
+      if (primeiraInteracao && !sessao.atendimentoHumano) {
+        await responder(client, msg.from, menuInicial());
+      }
+      return;
+    }
 
     console.log(`📩 Mensagem privada recebida de ${msg.from}`);
 
     const texto = limparTexto(textoOriginal);
-    const comandoMenu = /^(m|menu|inicio|comecar|recomecar|oi|ola|bom dia|boa tarde|boa noite)$/.test(texto);
+    const comandoMenu = /^(m|menu|menu principal|voltar ao menu|inicio)$/.test(texto);
+    const comandoInicio = ehMensagemDeInicio(texto);
 
-    if (comandoMenu) {
+    if (comandoMenu || comandoInicio) {
       sessoes.set(msg.from, novaSessao());
       await responder(client, msg.from, menuInicial());
       return;
     }
 
-    const sessao = obterSessao(msg.from);
+    const escolheuInstituicaoDiretamente =
+      texto === "1" || texto === "2" || texto.includes("unifatecie") || texto.includes("shekinah");
+
+    if (primeiraInteracao && !escolheuInstituicaoDiretamente) {
+      await responder(client, msg.from, menuInicial());
+      return;
+    }
+
     if (sessao.atendimentoHumano) return;
 
     if (sessao.etapa === "escolher_instituicao") {
