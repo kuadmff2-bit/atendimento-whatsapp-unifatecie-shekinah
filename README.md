@@ -66,7 +66,7 @@ npm start
 
 O `npm install` garante que qualquer dependência nova seja instalada.
 
-O projeto usa o WPPConnect 2.3.1, com suporte a recebimento e envio de mensagens por meio dos métodos `onMessage` e `sendText`.
+O projeto usa o WPPConnect 2.3.1, com suporte a recebimento e envio de mensagens por meio dos métodos `onMessage` e `sendText`. As dependências `puppeteer` e `puppeteer-core` são declaradas diretamente para garantir a instalação correta no Windows.
 
 ## Comandos do cliente
 
