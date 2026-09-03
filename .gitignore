@@ -5,6 +5,11 @@ node_modules/
 .wwebjs_auth/
 .wwebjs_cache/
 
+# Sessão do WPPConnect
+tokens/
+session/
+.wppconnect/
+
 # Variáveis privadas
 .env
 .env.*
