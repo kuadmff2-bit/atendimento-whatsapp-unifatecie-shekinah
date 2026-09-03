@@ -1,14 +1,12 @@
 // =====================================
 // IMPORTAÇÕES
 // =====================================
-const qrcode = require("qrcode-terminal");
-const { Client, LocalAuth } = require("whatsapp-web.js");
+const wppconnect = require("@wppconnect-team/wppconnect");
 const fs = require("fs");
 const path = require("path");
 
 // =====================================
 // TEXTOS E VALORES EDITÁVEIS
-// Altere somente esta área quando houver mudança de preço ou informação.
 // =====================================
 const CONFIG = {
   nomeAtendimento: "Atendimento UniFatecie e Centro Educacional Shekinah",
@@ -47,7 +45,7 @@ const CONFIG = {
 };
 
 // =====================================
-// CONFIGURAÇÃO DO CLIENTE
+// NAVEGADOR NO WINDOWS / WINDOWS ARM64
 // =====================================
 const windows = process.platform === "win32";
 
@@ -75,89 +73,13 @@ function encontrarNavegadorWindows() {
 
 const caminhoNavegador = encontrarNavegadorWindows();
 
-const opcoesPuppeteer = {
-  headless: true,
-  // O Puppeteer usa 30 segundos por padrão. Em computadores ARM ou mais
-  // lentos, o navegador pode precisar de mais tempo para iniciar.
-  timeout: 120000,
-  args: windows
-    ? ["--disable-extensions", "--no-first-run", "--no-default-browser-check"]
-    : ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-};
-
-// No Windows, prioriza o Chrome/Edge já instalado. Isso evita incompatibilidade
-// do navegador baixado pelo Puppeteer em computadores Windows ARM64.
-if (caminhoNavegador) {
-  opcoesPuppeteer.executablePath = caminhoNavegador;
-  console.log(`🌐 Navegador detectado: ${caminhoNavegador}`);
-}
-
-const client = new Client({
-  authStrategy: new LocalAuth(),
-  puppeteer: opcoesPuppeteer,
-});
-
 // =====================================
-// QR CODE E CONEXÃO
+// SESSÕES DO ATENDIMENTO
 // =====================================
-client.on("qr", (qr) => {
-  console.log("📲 Escaneie o QR Code abaixo:");
-  qrcode.generate(qr, { small: true });
-});
-
-client.on("authenticated", () => {
-  console.log("🔐 WhatsApp autenticado.");
-});
-
-client.on("ready", async () => {
-  console.log("✅ Tudo certo! WhatsApp conectado.");
-
-  try {
-    console.log(`📦 WhatsApp Web: ${await client.getWWebVersion()}`);
-  } catch (error) {
-    console.log("⚠️ Não foi possível consultar a versão do WhatsApp Web.");
-  }
-});
-
-client.on("auth_failure", (erro) => {
-  console.error("❌ Falha na autenticação:", erro);
-});
-
-client.on("disconnected", (reason) => {
-  console.log("⚠️ Desconectado:", reason);
-});
-
-client.initialize().catch((error) => {
-  console.error("❌ Não foi possível iniciar o navegador do WhatsApp.");
-  console.error(error);
-
-  if (windows) {
-    console.error(
-      "\nConfira se o Google Chrome ou o Microsoft Edge está instalado e totalmente fechado antes de tentar novamente."
-    );
-  }
-
-  process.exitCode = 1;
-});
-
-// =====================================
-// FUNÇÕES AUXILIARES
-// =====================================
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// As sessões ficam separadas por número de WhatsApp.
 const sessoes = new Map();
 const mensagensProcessadas = new Set();
 
-function marcarMensagemComoProcessada(id) {
-  if (!id) return false;
-  if (mensagensProcessadas.has(id)) return true;
-
-  mensagensProcessadas.add(id);
-  const limpeza = setTimeout(() => mensagensProcessadas.delete(id), 2 * 60 * 1000);
-  limpeza.unref();
-  return false;
-}
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function novaSessao() {
   return {
@@ -183,6 +105,23 @@ function obterSessao(numero) {
   return sessao;
 }
 
+function obterIdMensagem(msg) {
+  if (typeof msg.id === "string") return msg.id;
+  if (msg.id?._serialized) return msg.id._serialized;
+  if (msg.msgId) return String(msg.msgId);
+  return `${msg.from}:${msg.timestamp || Date.now()}:${msg.body || ""}`;
+}
+
+function mensagemJaProcessada(msg) {
+  const id = obterIdMensagem(msg);
+  if (mensagensProcessadas.has(id)) return true;
+
+  mensagensProcessadas.add(id);
+  const limpeza = setTimeout(() => mensagensProcessadas.delete(id), 2 * 60 * 1000);
+  limpeza.unref();
+  return false;
+}
+
 function limparTexto(texto = "") {
   return texto
     .trim()
@@ -205,40 +144,12 @@ function obterSaudacao() {
   return "Boa noite";
 }
 
-async function enviarResposta(msg, mensagem) {
-  await delay(900);
+function primeiroNome(nomeCompleto) {
+  return nomeCompleto.trim().split(/\s+/)[0];
+}
 
-  const enviada = await client.pupPage.evaluate(
-    async (idMensagem, conteudo) => {
-      const colecoes = window.require("WAWebCollections");
-      let mensagemOriginal = colecoes.Msg.get(idMensagem);
-
-      if (!mensagemOriginal) {
-        mensagemOriginal = (
-          await colecoes.Msg.getMessagesById([idMensagem])
-        )?.messages?.[0];
-      }
-
-      if (!mensagemOriginal) return false;
-
-      const remoto = mensagemOriginal.id?.remote;
-      const conversa =
-        mensagemOriginal.chat ||
-        colecoes.Chat.get(remoto) ||
-        colecoes.Chat.get(remoto?._serialized);
-
-      if (!conversa) return false;
-
-      const resultado = await window.WWebJS.sendMessage(conversa, conteudo, {});
-      return Boolean(resultado);
-    },
-    msg.id._serialized,
-    mensagem
-  );
-
-  if (!enviada) {
-    throw new Error("Não foi possível localizar a conversa para responder.");
-  }
+function nomeValido(nome) {
+  return nome.length >= 5 && nome.includes(" ") && /^[A-Za-zÀ-ÿ' -]+$/.test(nome);
 }
 
 function menuInicial() {
@@ -253,10 +164,8 @@ function menuInicial() {
 }
 
 function menuInstituicao(instituicao) {
-  const nome = CONFIG[instituicao].nome;
-
   return (
-    `Você está no atendimento: *${nome}* ✅\n\n` +
+    `Você está no atendimento: *${CONFIG[instituicao].nome}* ✅\n\n` +
     "Escolha uma opção:\n\n" +
     "1️⃣ Cursos e valores\n" +
     "2️⃣ Matrícula\n" +
@@ -271,33 +180,18 @@ function orientacaoVoltar() {
   return "\n\nDigite *menu* para voltar ao menu principal.";
 }
 
-function primeiroNome(nomeCompleto) {
-  return nomeCompleto.trim().split(/\s+/)[0];
-}
-
-function nomeValido(nome) {
-  return nome.length >= 5 && nome.includes(" ") && /^[A-Za-zÀ-ÿ' -]+$/.test(nome);
+async function responder(client, destino, mensagem) {
+  await delay(900);
+  await client.sendText(destino, mensagem);
 }
 
 // =====================================
-// FUNIL DE ATENDIMENTO — SOMENTE PRIVADO
+// FUNIL DE ATENDIMENTO
 // =====================================
-async function processarMensagem(msg) {
-  const idMensagem = msg.id?._serialized || null;
-
+async function processarMensagem(client, msg) {
   try {
-    // Algumas contas entregam a mensagem em "message", outras também usam
-    // "message_create". O ID impede que a mesma mensagem seja respondida duas vezes.
-    if (marcarMensagemComoProcessada(idMensagem)) return;
-
-    console.log(
-      `🔎 Evento recebido: origem=${msg.from || "desconhecida"} ` +
-        `própria=${msg.fromMe ? "sim" : "não"} tipo=${msg.type || "desconhecido"}`
-    );
-
-    // Ignora mensagens próprias, grupos, status, canais e listas de transmissão.
-    // Conversas privadas atuais podem terminar em @c.us ou @lid.
-    if (msg.fromMe || !msg.from) return;
+    if (!msg || !msg.from || msg.fromMe || msg.isGroupMsg) return;
+    if (mensagemJaProcessada(msg)) return;
 
     const remetente = msg.from.toLowerCase();
     if (
@@ -309,7 +203,7 @@ async function processarMensagem(msg) {
       return;
     }
 
-    const textoOriginal = msg.body ? msg.body.trim() : "";
+    const textoOriginal = typeof msg.body === "string" ? msg.body.trim() : "";
     if (!textoOriginal) return;
 
     const previa = textoOriginal.replace(/\s+/g, " ").slice(0, 80);
@@ -318,57 +212,50 @@ async function processarMensagem(msg) {
     const texto = limparTexto(textoOriginal);
     const comandoMenu = /^(menu|inicio|comecar|recomecar|oi|ola|bom dia|boa tarde|boa noite)$/.test(texto);
 
-    // "menu" sempre encerra o fluxo atual e recomeça o atendimento.
     if (comandoMenu) {
       sessoes.set(msg.from, novaSessao());
-      await enviarResposta(msg, menuInicial());
+      await responder(client, msg.from, menuInicial());
       return;
     }
 
     const sessao = obterSessao(msg.from);
-
-    // Enquanto estiver com um atendente, o robô não interrompe a conversa.
     if (sessao.atendimentoHumano) return;
 
-    // -------------------------------------
-    // ESCOLHA DA INSTITUIÇÃO
-    // -------------------------------------
     if (sessao.etapa === "escolher_instituicao") {
       if (texto === "1" || texto.includes("unifatecie")) {
         sessao.instituicao = "unifatecie";
         sessao.etapa = "menu_instituicao";
-        await enviarResposta(msg, menuInstituicao("unifatecie"));
+        await responder(client, msg.from, menuInstituicao("unifatecie"));
         return;
       }
 
       if (texto === "2" || texto.includes("shekinah")) {
         sessao.instituicao = "shekinah";
         sessao.etapa = "menu_instituicao";
-        await enviarResposta(msg, menuInstituicao("shekinah"));
+        await responder(client, msg.from, menuInstituicao("shekinah"));
         return;
       }
 
-      await enviarResposta(
-          msg,
+      await responder(
+        client,
+        msg.from,
         "Não consegui identificar a instituição. 😊\n\nDigite:\n*1* para UniFatecie\n*2* para Shekinah"
       );
       return;
     }
 
-    // -------------------------------------
-    // MENU DA INSTITUIÇÃO
-    // -------------------------------------
     if (sessao.etapa === "menu_instituicao") {
       if (texto === "0") {
         sessao.etapa = "escolher_instituicao";
         sessao.instituicao = null;
-        await enviarResposta(msg, menuInicial());
+        await responder(client, msg.from, menuInicial());
         return;
       }
 
       if (texto === "1") {
-        await enviarResposta(
-          msg,
+        await responder(
+          client,
+          msg.from,
           CONFIG[sessao.instituicao].cursos + orientacaoVoltar()
         );
         return;
@@ -376,8 +263,9 @@ async function processarMensagem(msg) {
 
       if (texto === "2") {
         sessao.etapa = "matricula_nome";
-        await enviarResposta(
-          msg,
+        await responder(
+          client,
+          msg.from,
           "📝 *SOLICITAÇÃO DE MATRÍCULA*\n\nPara começar, informe o *nome completo do aluno*."
         );
         return;
@@ -385,8 +273,9 @@ async function processarMensagem(msg) {
 
       if (texto === "3") {
         sessao.etapa = "financeiro_nome";
-        await enviarResposta(
-          msg,
+        await responder(
+          client,
+          msg.from,
           "💳 *FINANCEIRO E MENSALIDADES*\n\nInforme o *nome completo do aluno*."
         );
         return;
@@ -395,27 +284,27 @@ async function processarMensagem(msg) {
       if (texto === "4") {
         sessao.atendimentoHumano = true;
         sessao.etapa = "atendimento_humano";
-        await enviarResposta(
-          msg,
+        await responder(
+          client,
+          msg.from,
           "👩‍💼 Pronto! Seu atendimento foi encaminhado.\n\nUm atendente responderá por esta mesma conversa assim que estiver disponível.\n\nSe quiser voltar ao atendimento automático, digite *menu*."
         );
         return;
       }
 
-      await enviarResposta(
-          msg,
+      await responder(
+        client,
+        msg.from,
         "Opção inválida. Digite um número de *1 a 4* ou *0* para trocar de instituição."
       );
       return;
     }
 
-    // -------------------------------------
-    // MATRÍCULA
-    // -------------------------------------
     if (sessao.etapa === "matricula_nome") {
       if (!nomeValido(textoOriginal)) {
-        await enviarResposta(
-          msg,
+        await responder(
+          client,
+          msg.from,
           "Por favor, informe o *nome completo do aluno*, com nome e sobrenome."
         );
         return;
@@ -423,8 +312,9 @@ async function processarMensagem(msg) {
 
       sessao.nome = textoOriginal;
       sessao.etapa = "matricula_curso";
-      await enviarResposta(
-          msg,
+      await responder(
+        client,
+        msg.from,
         `Obrigado, ${primeiroNome(sessao.nome)}! 😊\n\nQual *curso* você deseja fazer?`
       );
       return;
@@ -432,7 +322,7 @@ async function processarMensagem(msg) {
 
     if (sessao.etapa === "matricula_curso") {
       if (textoOriginal.length < 2 || textoOriginal.length > 100) {
-        await enviarResposta(msg, "Digite o nome do curso desejado.");
+        await responder(client, msg.from, "Digite o nome do curso desejado.");
         return;
       }
 
@@ -440,8 +330,9 @@ async function processarMensagem(msg) {
       sessao.atendimentoHumano = true;
       sessao.etapa = "atendimento_humano";
 
-      await enviarResposta(
-          msg,
+      await responder(
+        client,
+        msg.from,
         "✅ *SOLICITAÇÃO REGISTRADA*\n\n" +
           `🏫 Instituição: ${CONFIG[sessao.instituicao].nome}\n` +
           `👤 Aluno: ${sessao.nome}\n` +
@@ -452,13 +343,11 @@ async function processarMensagem(msg) {
       return;
     }
 
-    // -------------------------------------
-    // FINANCEIRO
-    // -------------------------------------
     if (sessao.etapa === "financeiro_nome") {
       if (!nomeValido(textoOriginal)) {
-        await enviarResposta(
-          msg,
+        await responder(
+          client,
+          msg.from,
           "Por favor, informe o *nome completo do aluno*, com nome e sobrenome."
         );
         return;
@@ -466,8 +355,9 @@ async function processarMensagem(msg) {
 
       sessao.nome = textoOriginal;
       sessao.etapa = "financeiro_assunto";
-      await enviarResposta(
-          msg,
+      await responder(
+        client,
+        msg.from,
         "Conte resumidamente o que você precisa.\n\n" +
           "Exemplos: segunda via, vencimento, mensalidade em aberto ou confirmação de pagamento.\n\n" +
           "🔒 Não envie senha, código de acesso ou dados do cartão."
@@ -477,8 +367,9 @@ async function processarMensagem(msg) {
 
     if (sessao.etapa === "financeiro_assunto") {
       if (textoOriginal.length < 3 || textoOriginal.length > 500) {
-        await enviarResposta(
-          msg,
+        await responder(
+          client,
+          msg.from,
           "Descreva o pedido em uma mensagem de até 500 caracteres."
         );
         return;
@@ -487,8 +378,9 @@ async function processarMensagem(msg) {
       sessao.atendimentoHumano = true;
       sessao.etapa = "atendimento_humano";
 
-      await enviarResposta(
-          msg,
+      await responder(
+        client,
+        msg.from,
         "✅ *SOLICITAÇÃO FINANCEIRA RECEBIDA*\n\n" +
           `🏫 Instituição: ${CONFIG[sessao.instituicao].nome}\n` +
           `👤 Aluno: ${sessao.nome}\n` +
@@ -499,15 +391,54 @@ async function processarMensagem(msg) {
       return;
     }
 
-    // Proteção para qualquer estado inesperado.
     sessoes.set(msg.from, novaSessao());
-    await enviarResposta(msg, menuInicial());
+    await responder(client, msg.from, menuInicial());
   } catch (error) {
-    // Permite uma nova tentativa caso o primeiro evento tenha falhado.
-    if (idMensagem) mensagensProcessadas.delete(idMensagem);
     console.error("❌ Erro no processamento da mensagem:", error);
   }
 }
 
-client.on("message", processarMensagem);
-client.on("message_create", processarMensagem);
+// =====================================
+// INICIALIZAÇÃO DO WHATSAPP
+// =====================================
+async function iniciar() {
+  try {
+    if (caminhoNavegador) {
+      console.log(`🌐 Navegador detectado: ${caminhoNavegador}`);
+    }
+
+    console.log("🚀 Iniciando atendimento pelo WPPConnect...");
+
+    const puppeteerOptions = { timeout: 120000 };
+    if (caminhoNavegador) puppeteerOptions.executablePath = caminhoNavegador;
+
+    const client = await wppconnect.create({
+      session: "atendimento-unifatecie-shekinah",
+      headless: true,
+      useChrome: true,
+      logQR: true,
+      autoClose: 0,
+      deviceSyncTimeout: 0,
+      waitForLogin: true,
+      disableWelcome: true,
+      updatesLog: true,
+      puppeteerOptions,
+      browserArgs: windows
+        ? ["--disable-extensions", "--no-first-run", "--no-default-browser-check"]
+        : ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    });
+
+    console.log("✅ Tudo certo! WhatsApp conectado e atendimento ativo.");
+
+    client.onMessage((msg) => processarMensagem(client, msg));
+
+    client.onStateChange((estado) => {
+      console.log(`🔄 Estado do WhatsApp: ${estado}`);
+    });
+  } catch (error) {
+    console.error("❌ Não foi possível iniciar o atendimento:", error);
+    process.exitCode = 1;
+  }
+}
+
+iniciar();
