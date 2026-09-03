@@ -66,7 +66,7 @@ npm start
 
 O `npm install` garante que qualquer dependência nova seja instalada.
 
-O projeto usa um commit fixo do repositório oficial do `whatsapp-web.js`. Essa versão contém correções de eventos que ainda não estavam presentes na última publicação disponível pelo npm.
+O projeto usa o WPPConnect 2.3.1, com suporte a recebimento e envio de mensagens por meio dos métodos `onMessage` e `sendText`.
 
 ## Comandos do cliente
 
@@ -76,11 +76,7 @@ O projeto usa um commit fixo do repositório oficial do `whatsapp-web.js`. Essa 
 
 Quando o cliente pede um atendente, o robô para de responder naquela conversa. Para voltar ao atendimento automático, o cliente pode digitar `menu`.
 
-As conversas privadas identificadas pelo WhatsApp como `@c.us` ou `@lid` são aceitas. Grupos, status, canais e listas de transmissão são ignorados.
-
-O bot acompanha os eventos `message` e `message_create` para melhorar a compatibilidade com contas comuns e Business. Mensagens duplicadas são eliminadas automaticamente pelo identificador do evento.
-
-Para conversas `@lid`, o envio usa diretamente a conversa já associada à mensagem recebida. Isso evita a falha conhecida de `getChatById()` ao tentar recriar o contato protegido.
+As conversas privadas identificadas pelo WhatsApp como `@c.us` ou `@lid` são aceitas. Grupos, status, canais e listas de transmissão são ignorados. Mensagens duplicadas são eliminadas automaticamente.
 
 ## Alterar informações
 
@@ -88,6 +84,6 @@ Os nomes, cursos e valores ficam no objeto `CONFIG`, no começo do arquivo `inde
 
 ## Segurança
 
-As pastas `.wwebjs_auth` e `.wwebjs_cache` guardam dados locais da sessão e estão bloqueadas pelo `.gitignore`. Nunca envie essas pastas para o GitHub ou para outras pessoas.
+As pastas `tokens`, `session`, `.wppconnect`, `.wwebjs_auth` e `.wwebjs_cache` podem guardar dados locais da sessão e estão bloqueadas pelo `.gitignore`. Nunca envie essas pastas para o GitHub ou para outras pessoas.
 
 Este projeto utiliza automação do WhatsApp Web por uma biblioteca não oficial. A Meta pode desconectar a sessão ou limitar contas que façam automações abusivas. Evite mensagens em massa e spam.
