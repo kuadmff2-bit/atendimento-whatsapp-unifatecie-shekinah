@@ -2,7 +2,7 @@ module.exports = {
   cursos: [
     {
       nome: "Informática Completa",
-      aliases: ["informatica completa", "informatica basica", "informatica básica"],
+      aliases: ["informatica completa", "informatica basica", "informática básica"],
       duracao: "15 meses",
     },
     {
@@ -42,11 +42,11 @@ module.exports = {
     },
   ],
   textoIA: [
-    "DURAÇÕES CONFIRMADAS — SHEKINAH",
-    "- Informática Completa/Básica: 15 meses.",
-    "- Informática Avançada: 15 meses.",
-    "- Gestão Empresarial 6 em 1: 15 meses.",
-    "- Inglês Kids, Desenho Artístico, Teclado, Reforço Escolar e EJA: duração variável; depende da evolução do aluno e da decisão do aluno ou responsável sobre continuar ou encerrar o curso.",
-    "- Nunca invente uma duração diferente dessas informações.",
+    "REGRA ABSOLUTA SOBRE DURAÇÃO DOS CURSOS DA SHEKINAH:",
+    "- SOMENTE Informática Básica/Completa, Informática Avançada e Gestão Empresarial 6 em 1 têm duração fixa de 15 meses.",
+    "- Inglês Kids, Desenho Artístico, Teclado, Reforço Escolar e EJA NÃO têm duração fixa de 15 meses.",
+    "- Esses demais cursos têm duração variável e dependem da evolução do aluno e da decisão do aluno ou responsável sobre continuar ou encerrar.",
+    "- NUNCA diga que 'cada curso tem 15 meses', 'todos os cursos têm 15 meses' ou algo equivalente.",
+    "- Se perguntarem a duração de um curso específico, use exatamente estas regras e não invente uma duração diferente.",
   ].join("\n"),
 };
