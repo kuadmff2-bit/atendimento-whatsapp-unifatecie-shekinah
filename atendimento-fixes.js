@@ -53,6 +53,13 @@ function perguntaDuracao(texto = "") {
   return /\b(duracao|dura|duram|tempo|quanto tempo|quantos meses|meses)\b/.test(t);
 }
 
+function perguntaRedesSociaisShekinah(texto = "", sessao) {
+  const t = normalizar(texto);
+  const perguntouRede = /\b(instagram|facebook|rede social|redes sociais|perfil|pagina|página)\b/.test(t);
+  const contextoShekinah = /\bshekinah\b/.test(t) || sessao?.instituicao === "shekinah";
+  return perguntouRede && contextoShekinah;
+}
+
 function querMatriculaShekinah(texto = "", sessao, cursos = []) {
   const t = normalizar(texto);
   const mencionaMatricula = /\b(quero fazer|quero estudar|quero me matricular|quero matricular|fazer o curso|fazer os cursos|matricula|matricular)\b/.test(t);
@@ -130,8 +137,20 @@ async function tentarCorrecoesAtendimento({
     return true;
   }
 
-  // O nome de um curso da Shekinah já é contexto suficiente.
-  // Não pergunte novamente qual curso a pessoa quer fazer.
+  if (perguntaRedesSociaisShekinah(textoOriginal, sessao)) {
+    sessao.instituicao = "shekinah";
+
+    const instagram = SHEKINAH_INFO?.redesSociais?.instagram;
+    const facebook = SHEKINAH_INFO?.redesSociais?.facebook;
+
+    await responder(
+      client,
+      msg.from,
+      `📱 *Redes sociais oficiais da Shekinah*\n\n📸 Instagram:\n${instagram}\n\n📘 Facebook:\n${facebook}`
+    );
+    return true;
+  }
+
   if (querMatriculaShekinah(textoOriginal, sessao, cursosShekinah) && cursosShekinah.length > 0) {
     iniciarMatriculaShekinahComCursos(sessao, cursosShekinah);
 
