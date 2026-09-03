@@ -10,7 +10,7 @@ const crypto = require("crypto");
 // =====================================
 // TEXTOS E VALORES EDITÁVEIS
 // =====================================
-const WHATSAPP_SECRETARIA_SHEKINAH = "5592993977312@c.us";
+const WHATSAPP_SECRETARIA_SHEKINAH = "5592993977312";
 
 const CURSOS_UNIFATECIE = {
   "1": {
@@ -558,6 +558,41 @@ async function resolverDestino(client, destino) {
   return destino;
 }
 
+async function localizarNumeroNoWhatsApp(client, numero) {
+  const numeroCompleto = somenteNumeros(numero);
+  const candidatos = [numeroCompleto];
+
+  // Alguns números brasileiros antigos são identificados pelo WhatsApp sem o nono dígito.
+  if (numeroCompleto.startsWith("55") && numeroCompleto.length === 13 && numeroCompleto[4] === "9") {
+    candidatos.push(numeroCompleto.slice(0, 4) + numeroCompleto.slice(5));
+  }
+
+  let ultimoErro;
+
+  for (const candidato of candidatos) {
+    const contato = `${candidato}@c.us`;
+
+    try {
+      const status = await client.checkNumberStatus(contato);
+      const destinoEncontrado = status?.id?._serialized?.replace(/^\+/, "");
+
+      console.log(
+        `🔎 Secretaria consultada no WhatsApp: ${contato} | existe=${Boolean(status?.numberExists)} | recebe=${Boolean(status?.canReceiveMessage)}`
+      );
+
+      if (status?.numberExists && status?.canReceiveMessage !== false && destinoEncontrado) {
+        return destinoEncontrado;
+      }
+    } catch (error) {
+      ultimoErro = error;
+      console.warn(`⚠️ Falha ao consultar ${contato}:`, error?.message || error);
+    }
+  }
+
+  const detalhe = ultimoErro?.message ? `: ${ultimoErro.message}` : "";
+  throw new Error(`O número da secretaria não foi localizado no WhatsApp${detalhe}`);
+}
+
 async function responder(client, destino, mensagem) {
   await delay(900);
 
@@ -582,7 +617,11 @@ async function encaminharParaSecretariaShekinah(client, msg, sessao, problema) {
     "Por favor, entre em contato com essa pessoa para continuar o atendimento.";
 
   try {
-    await responder(client, WHATSAPP_SECRETARIA_SHEKINAH, mensagemSecretaria);
+    const destinoSecretaria = await localizarNumeroNoWhatsApp(
+      client,
+      WHATSAPP_SECRETARIA_SHEKINAH
+    );
+    await responder(client, destinoSecretaria, mensagemSecretaria);
     sessao.atendimentoHumano = true;
     sessao.etapa = "atendimento_humano";
     await responder(
