@@ -1,4 +1,5 @@
 const SHEKINAH_INFO = require("./shekinah-info");
+const { tratarComandoAdmin } = require("./autonomia");
 
 function normalizar(texto = "") {
   return String(texto)
@@ -8,6 +9,86 @@ function normalizar(texto = "") {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function pareceComandoAdmin(texto = "") {
+  const t = normalizar(texto);
+  return /^(admin ajuda|comandos admin|ajuda admin|status bot|status do bot|trocar numero do robo|trocar numero robo|confirmar troca numero|cancelar troca numero|cancelar troca do numero|listar fatos|listar erros|definir fato|remover fato|promocao|remover promocao|atualizar curso)/.test(t);
+}
+
+function adicionarIdentidade(set, valor, profundidade = 0) {
+  if (valor == null || profundidade > 4) return;
+
+  if (typeof valor === "string" || typeof valor === "number") {
+    const texto = String(valor).trim();
+    if (texto) set.add(texto);
+    return;
+  }
+
+  if (Array.isArray(valor)) {
+    for (const item of valor) adicionarIdentidade(set, item, profundidade + 1);
+    return;
+  }
+
+  if (typeof valor !== "object") return;
+
+  const chavesPermitidas = [
+    "phoneNumber",
+    "pn",
+    "lid",
+    "id",
+    "_serialized",
+    "user",
+    "contact",
+    "contactId",
+    "wid",
+  ];
+
+  for (const chave of chavesPermitidas) {
+    if (Object.prototype.hasOwnProperty.call(valor, chave)) {
+      adicionarIdentidade(set, valor[chave], profundidade + 1);
+    }
+  }
+}
+
+async function tentarComandoAdminComMapeamento({ client, msg, textoOriginal, responder }) {
+  if (!pareceComandoAdmin(textoOriginal)) return false;
+
+  const identidades = new Set();
+  adicionarIdentidade(identidades, msg?.from);
+  adicionarIdentidade(identidades, msg?.sender?.id);
+  adicionarIdentidade(identidades, msg?.id?.remote);
+  adicionarIdentidade(identidades, msg?.author);
+  adicionarIdentidade(identidades, msg?.chatId);
+
+  if (typeof client?.getPnLidEntry === "function") {
+    const bases = [...identidades];
+
+    for (const base of bases) {
+      const id = String(base || "").trim();
+      if (!id || (!id.includes("@lid") && !id.includes("@c.us"))) continue;
+
+      try {
+        const mapeamento = await client.getPnLidEntry(id);
+        adicionarIdentidade(identidades, mapeamento);
+      } catch (error) {
+        console.warn(
+          "⚠️ Não foi possível resolver LID/telefone para comando admin:",
+          error?.message || error
+        );
+      }
+    }
+  }
+
+  for (const identidade of identidades) {
+    const resposta = tratarComandoAdmin(textoOriginal, identidade);
+    if (!resposta) continue;
+
+    await responder(client, msg.from, resposta);
+    return true;
+  }
+
+  return false;
 }
 
 function resetarSessao(sessao) {
@@ -115,6 +196,17 @@ async function tentarCorrecoesAtendimento({
   responder,
 }) {
   if (!textoOriginal || !sessao) return false;
+
+  if (
+    await tentarComandoAdminComMapeamento({
+      client,
+      msg,
+      textoOriginal,
+      responder,
+    })
+  ) {
+    return true;
+  }
 
   const t = normalizar(textoOriginal);
   const cursosShekinah = cursosShekinahNoTexto(textoOriginal);
