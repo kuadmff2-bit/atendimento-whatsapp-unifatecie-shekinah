@@ -44,7 +44,7 @@ function extrair(html) {
 }
 
 async function listarPaginaPublica() {
-  const r = await fetch(URL, { headers: { "user-agent": "Mozilla/5.0 Light-Shekinah/3.0" } });
+  const r = await fetch(URL, { headers: { "user-agent": "Mozilla/5.0 Light-Shekinah/3.1" } });
   if (!r.ok) throw new Error(`Catálogo EAD HTTP ${r.status}`);
   const cursos = extrair(await r.text());
   if (!cursos.length) throw new Error("Catálogo EAD vazio");
@@ -154,7 +154,8 @@ function cursosAtivos(cs) {
 const STOP = new Set([
   "tem","curso","cursos","de","da","do","das","dos","ead","online","na","no","em","shekinah","oferece","oferecem",
   "voces","voce","eu","quero","queria","gostaria","sobre","um","uma","e","a","o","para","pra","me","mostra","mostrar","temos",
-  "qual","quais","quanto","quantos","quanto","custa","custam","valor","valores","preco","precos","mensalidade","mensalidades","saber","ter"
+  "qual","quais","quanto","quantos","custa","custam","valor","valores","preco","precos","mensalidade","mensalidades","saber","ter",
+  "por","favor","fala","falar","diz","dizer","desse","dessa","este","esta","esse","essa"
 ]);
 
 const ALIASES = {
@@ -208,15 +209,54 @@ function pontuarCurso(c, termosOriginais, termosExpandidos) {
   return score;
 }
 
-function pesquisarCursos(cs, texto) {
+function pesquisarCursosComScore(cs, texto) {
   const termos = termosConsulta(texto);
   if (!termos.length) return [];
   const expandidos = expandirTermos(termos);
   return cs
     .map(c => ({ c, score: pontuarCurso(c, termos, expandidos) }))
     .filter(x => x.score > 0)
-    .sort((a, b) => b.score - a.score || a.c.nome.localeCompare(b.c.nome, "pt-BR"))
-    .map(x => x.c);
+    .sort((a, b) => b.score - a.score || a.c.nome.localeCompare(b.c.nome, "pt-BR"));
+}
+
+function pesquisarCursos(cs, texto) {
+  return pesquisarCursosComScore(cs, texto).map(x => x.c);
+}
+
+function cursoMencionadoNaMensagem(cs, texto) {
+  const t = norm(texto);
+
+  // Melhor caso: a mensagem contém o nome completo cadastrado do curso.
+  const completos = cs
+    .filter(c => {
+      const n = norm(c.nome);
+      return n && t.includes(n);
+    })
+    .sort((a, b) => norm(b.nome).length - norm(a.nome).length);
+  if (completos.length) return completos[0];
+
+  const termos = termosConsulta(texto);
+  if (!termos.length) return null;
+
+  // Se todos os termos úteis da pergunta aparecem no nome de um único curso,
+  // é uma referência explícita ao curso, mesmo com pontuação ou ordem diferente.
+  const todosNoNome = cs.filter(c => {
+    const nome = norm(c.nome);
+    return termos.every(termo => nome.includes(termo));
+  });
+  if (todosNoNome.length === 1) return todosNoNome[0];
+  if (todosNoNome.length > 1) {
+    return todosNoNome.sort((a, b) => norm(a.nome).length - norm(b.nome).length)[0];
+  }
+
+  // Para pequenas variações de escrita, só assume o primeiro resultado quando
+  // ele tem vantagem clara sobre o segundo. Isso evita trocar de curso por engano.
+  const ranqueados = pesquisarCursosComScore(cs, texto);
+  if (!ranqueados.length) return null;
+  const primeiro = ranqueados[0];
+  const segundo = ranqueados[1];
+  if (primeiro.score >= 80 && (!segundo || primeiro.score >= segundo.score + 30)) return primeiro.c;
+  return null;
 }
 
 async function buscar(texto) {
@@ -298,20 +338,65 @@ async function responder(texto, sessao = {}) {
 
   let cs = cursosAtivos(await listar());
   let atual = cursoAtualDaSessao(cs, sessao);
+  let mencionado = cursoMencionadoNaMensagem(cs, texto);
 
-  // Perguntas curtas como “e o valor?” sempre se referem ao último curso escolhido.
+  // Se a própria mensagem cita um curso, esse curso tem prioridade sobre o
+  // contexto anterior. Ex.: “Lógica de Programação, quanto custa?”.
+  if (mencionado) {
+    sessao.eadCursoAtual = mencionado.nome;
+    atual = mencionado;
+  }
+
   if (ehPerguntaValor(t)) {
+    if (mencionado || (atual && !termosConsulta(texto).length)) return respostaValor(mencionado || atual);
+
+    // A pessoa escreveu um nome/termo de curso junto com a pergunta de preço,
+    // mas não houve correspondência segura. Não pergunta genericamente “de qual curso?”.
+    const termos = termosConsulta(texto);
+    if (termos.length) {
+      let achados = pesquisarCursos(cs, texto);
+      if (!achados.length && EscolaAPI.configuracao().configurada) {
+        try {
+          cs = cursosAtivos(await listar(true));
+          mencionado = cursoMencionadoNaMensagem(cs, texto);
+          if (mencionado) {
+            sessao.eadCursoAtual = mencionado.nome;
+            return respostaValor(mencionado);
+          }
+          achados = pesquisarCursos(cs, texto);
+        } catch (_) {}
+      }
+
+      if (achados.length === 1) {
+        sessao.eadCursoAtual = achados[0].nome;
+        return respostaValor(achados[0]);
+      }
+      if (achados.length > 1) {
+        sessao.eadUltimaLista = achados;
+        sessao.eadPagina = 0;
+        const top = achados.slice(0, 6);
+        const linhas = top.map((c, i) => `${i + 1}. ${c.nome}`).join("\n");
+        return `💰 Encontrei mais de um curso que pode corresponder ao que você escreveu:\n\n${linhas}\n\nDiga o nome ou número e eu informo o valor exato.`;
+      }
+
+      return `🔎 Não encontrei no catálogo EAD um curso correspondente a *${termos.join(" ")}*. Se quiser, posso listar os cursos disponíveis.`;
+    }
+
     if (atual) return respostaValor(atual);
     return "💰 Claro. De qual curso EAD da Shekinah você quer saber o valor?";
   }
 
-  if (ehPerguntaConteudo(t) && atual && !termosConsulta(texto).length) {
-    return conteudoCurso(atual);
+  if (ehPerguntaConteudo(t)) {
+    if (mencionado) return conteudoCurso(mencionado);
+    if (atual && !termosConsulta(texto).length) return conteudoCurso(atual);
   }
 
-  if (ehPerguntaCarga(t) && atual) {
-    const carga = atual.cargaHoraria ? `${atual.cargaHoraria}h` : "não foi informada pela plataforma nesta consulta";
-    return `⏱️ A carga horária de *${atual.nome}* é *${carga}*.`;
+  if (ehPerguntaCarga(t)) {
+    if (mencionado || (atual && !termosConsulta(texto).length)) {
+      const c = mencionado || atual;
+      const carga = c.cargaHoraria ? `${c.cargaHoraria}h` : "não foi informada pela plataforma nesta consulta";
+      return `⏱️ A carga horária de *${c.nome}* é *${carga}*.`;
+    }
   }
 
   if (/^(mais|proximos|proximo|continuar|continua)$/.test(t) && Array.isArray(sessao.eadUltimaLista)) {
@@ -339,12 +424,9 @@ async function responder(texto, sessao = {}) {
     return paginaLista(cs, 0);
   }
 
-  const exato = cs.find(c => t.includes(norm(c.nome)));
-  if (exato) {
-    sessao.eadCursoAtual = exato.nome;
-    if (ehPerguntaConteudo(t)) return conteudoCurso(exato);
-    if (ehPerguntaValor(t)) return respostaValor(exato);
-    return detalhesCurso(exato);
+  if (mencionado) {
+    if (ehPerguntaConteudo(t)) return conteudoCurso(mencionado);
+    return detalhesCurso(mencionado);
   }
 
   const consultaDisponibilidade = /^(tem|temos|voces tem|voce tem|ha|existe)|oferece|oferecem|procuro|busco|queria.*curso|quero.*curso/.test(t) || termosConsulta(texto).length > 0;
@@ -352,7 +434,6 @@ async function responder(texto, sessao = {}) {
   if (consultaDisponibilidade) {
     let achados = pesquisarCursos(cs, texto);
 
-    // Se não encontrou, força atualização para evitar resposta baseada em cache antigo.
     if (!achados.length && EscolaAPI.configuracao().configurada) {
       try {
         cs = cursosAtivos(await listar(true));
