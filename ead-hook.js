@@ -18,6 +18,16 @@ function ehPerguntaDeValor(t = "") {
   return /\b(valor|preco|quanto custa|custa quanto|mensalidade|parcelas?|parcelamento|a vista|avista|2x|brinde|brindes|bonus|promocao)\b/.test(t);
 }
 
+function ehPerguntaDeAcesso(t = "") {
+  return /\b(quando libera|libera o acesso|liberar acesso|acesso liberado|quando posso acessar|quando comeca|quando começo|apos pagamento|depois do pagamento)\b/.test(t);
+}
+
+function regraAcesso() {
+  return `🔓 *Liberação do acesso:* o curso é liberado somente após a confirmação do pagamento.\n` +
+    `• Pagamento à vista: após o pagamento dos *${OFERTA_EAD.avista}*.\n` +
+    `• Pagamento parcelado: após o pagamento da *1ª parcela de ${OFERTA_EAD.parcela}*.`;
+}
+
 function ofertaCompleta() {
   return `💰 *Valores dos cursos EAD da Shekinah*\n\n` +
     `💵 *À vista: ${OFERTA_EAD.avista}*\n` +
@@ -25,12 +35,14 @@ function ofertaCompleta() {
     `💳 *Parcelado: ${OFERTA_EAD.quantidadeParcelas}x de ${OFERTA_EAD.parcela}*\n` +
     `• 1ª parcela no início do curso\n` +
     `• 2ª parcela no fim do curso\n` +
-    `• Total parcelado: *${OFERTA_EAD.totalParcelado}*`;
+    `• Total parcelado: *${OFERTA_EAD.totalParcelado}*\n\n` +
+    regraAcesso();
 }
 
 function ofertaCurta() {
   return `💰 *Valor:* ${OFERTA_EAD.avista} à vista ou ${OFERTA_EAD.quantidadeParcelas}x de ${OFERTA_EAD.parcela} — uma parcela no início e outra no fim do curso.\n` +
-    `🎁 À vista, ganha *+${OFERTA_EAD.brindesAvista} cursos EAD de sua preferência*.`;
+    `🎁 À vista, ganha *+${OFERTA_EAD.brindesAvista} cursos EAD de sua preferência*.\n` +
+    `🔓 O acesso é liberado após a confirmação do pagamento: *${OFERTA_EAD.avista} à vista* ou a *1ª parcela de ${OFERTA_EAD.parcela}*.`;
 }
 
 function aplicarOfertaComercial(resposta = "") {
@@ -69,6 +81,15 @@ async function tentarEad(args) {
       sessao.modalidadeShekinah = "ead";
       sessao.cursoAtual = null;
       await responder(client, msg.from, ofertaCompleta());
+      return true;
+    }
+
+    if (ehPerguntaDeAcesso(t)) {
+      sessao.instituicao = "shekinah";
+      sessao.assuntoAtual = "shekinah_ead";
+      sessao.modalidadeShekinah = "ead";
+      sessao.cursoAtual = null;
+      await responder(client, msg.from, regraAcesso());
       return true;
     }
 
