@@ -17,6 +17,12 @@ function substituirTodosObrigatorio(antigo, novo, nome) {
   codigo = codigo.split(antigo).join(novo);
   console.log(`🔧 ${nome}: ${ocorrencias} ocorrência(s).`);
 }
+function substituirRegexObrigatorio(regex, novo, nome) {
+  if (!regex.test(codigo)) throw new Error(`Não foi possível integrar '${nome}' ao bot-base.`);
+  regex.lastIndex = 0;
+  codigo = codigo.replace(regex, () => novo);
+  console.log(`🔧 ${nome}.`);
+}
 
 substituirObrigatorio(
   'const { iaDisponivel, tentarResponderComIA } = require("./ia-groq");',
@@ -31,6 +37,187 @@ substituirObrigatorio(
   "memória persistente"
 );
 substituirObrigatorio('  const LIMITE_SESSAO = 30 * 60 * 1000;','  const LIMITE_SESSAO = 6 * 60 * 60 * 1000;',"janela de memória");
+
+substituirRegexObrigatorio(
+  /function finalizarMatriculaShekinah\(sessao\) \{[\s\S]*?\n\}\n\nfunction menuInicial\(\) \{/,
+  `function finalizarMatriculaShekinah(sessao) {
+  const d = sessao.dados;
+  return (
+    "✅ *PRÉ-MATRÍCULA RECEBIDA — SHEKINAH*\\n\\n" +
+    "📚 Curso(s): " + (d.curso || "Não informado") + "\\n" +
+    "👤 Nome completo: " + (d.nome || "Não informado") + "\\n" +
+    "🪪 CPF: " + (d.cpf || "Não informado") + "\\n" +
+    "📱 Telefone/WhatsApp: " + (d.telefone || "Não informado") + "\\n" +
+    "✉️ E-mail: " + (d.email || "Não informado") + "\\n" +
+    "📅 Data de nascimento: " + (d.nascimento || "Não informado") + "\\n" +
+    "🧒 Aluno menor de 18 anos: " + (sessao.menorDeIdade ? "Sim" : "Não") + "\\n" +
+    (sessao.menorDeIdade ? "👨‍👩‍👧 CPF de um responsável: " + (d.cpfResponsavel || "Não informado") + "\\n" : "") +
+    "\\nAgora a secretaria conferirá os dados e continuará a matrícula por esta conversa.\\n" +
+    "Para voltar ao atendimento automático, digite *m*."
+  );
+}
+
+function menuInicial() {`,
+  "resumo simplificado da matrícula Shekinah"
+);
+
+substituirRegexObrigatorio(
+  /async function processarMatriculaShekinah\(client, msg, textoOriginal, sessao\) \{[\s\S]*?\n\}\n\n\/\/ =====================================\n\/\/ FUNIL DE ATENDIMENTO/,
+  `async function processarMatriculaShekinah(client, msg, textoOriginal, sessao) {
+  const d = sessao.dados;
+
+  // Migra automaticamente sessões antigas para o novo formulário enxuto.
+  const etapasAntigas = new Set([
+    "shekinah_matricula_rg",
+    "shekinah_matricula_telefone2",
+    "shekinah_matricula_endereco",
+    "shekinah_matricula_cpf_pai",
+    "shekinah_matricula_cpf_mae"
+  ]);
+  if (etapasAntigas.has(sessao.etapa)) {
+    let proximaEtapa = "";
+    let proximaMensagem = "";
+    if (!d.nome) {
+      proximaEtapa = "shekinah_matricula_nome";
+      proximaMensagem = "👤 Informe o *nome completo* do aluno.";
+    } else if (!d.cpf) {
+      proximaEtapa = "shekinah_matricula_cpf";
+      proximaMensagem = "Informe o *CPF* do aluno.";
+    } else if (!d.telefone) {
+      proximaEtapa = "shekinah_matricula_telefone";
+      proximaMensagem = "📱 Informe o *telefone/WhatsApp com DDD*.";
+    } else if (!d.email) {
+      proximaEtapa = "shekinah_matricula_email";
+      proximaMensagem = "✉️ Informe o *e-mail* do aluno.";
+    } else if (!d.nascimento) {
+      proximaEtapa = "shekinah_matricula_nascimento";
+      proximaMensagem = "📅 Informe a *data de nascimento* no formato *DD/MM/AAAA*.";
+    } else {
+      const nascimentoSalvo = dataNascimentoValida(d.nascimento);
+      sessao.menorDeIdade = nascimentoSalvo ? verificarMenorDeIdade(nascimentoSalvo) : false;
+      if (sessao.menorDeIdade && !d.cpfResponsavel) {
+        proximaEtapa = "shekinah_matricula_cpf_responsavel";
+        proximaMensagem = "🧒 Identifiquei pela data de nascimento que o aluno é menor de 18 anos.\\n\\nInforme o *CPF de um dos responsáveis*.";
+      }
+    }
+
+    if (proximaEtapa) {
+      sessao.etapa = proximaEtapa;
+      await responder(client, msg.from, proximaMensagem);
+      return true;
+    }
+
+    sessao.atendimentoHumano = true;
+    sessao.etapa = "atendimento_humano";
+    await responder(client, msg.from, finalizarMatriculaShekinah(sessao));
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_curso") {
+    if (!textoDentroDoLimite(textoOriginal, 2, 150)) {
+      await responder(client, msg.from, "Informe o curso ou os cursos desejados.");
+      return true;
+    }
+    d.curso = textoOriginal;
+    sessao.etapa = "shekinah_matricula_nome";
+    await responder(client, msg.from, "👤 Informe o *nome completo* do aluno.");
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_nome") {
+    if (!nomeValido(textoOriginal)) {
+      await responder(client, msg.from, "Informe o nome completo, com nome e sobrenome.");
+      return true;
+    }
+    d.nome = textoOriginal;
+    sessao.nome = textoOriginal;
+    sessao.etapa = "shekinah_matricula_cpf";
+    await responder(client, msg.from, "Obrigado, " + primeiroNome(d.nome) + "! 😊\\n\\nInforme o *CPF* do aluno.");
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_cpf") {
+    if (!cpfValido(textoOriginal)) {
+      await responder(client, msg.from, "CPF inválido. Digite os *11 números do CPF*.");
+      return true;
+    }
+    d.cpf = formatarCpf(textoOriginal);
+    sessao.etapa = "shekinah_matricula_telefone";
+    await responder(client, msg.from, "📱 Informe o *telefone/WhatsApp com DDD*.");
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_telefone") {
+    if (!telefoneValido(textoOriginal)) {
+      await responder(client, msg.from, "Telefone inválido. Digite o número com DDD.");
+      return true;
+    }
+    d.telefone = somenteNumeros(textoOriginal);
+    sessao.etapa = "shekinah_matricula_email";
+    await responder(client, msg.from, "✉️ Informe o *e-mail* do aluno.");
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_email") {
+    if (!emailValido(textoOriginal)) {
+      await responder(client, msg.from, "E-mail inválido. Digite um endereço como *nome@exemplo.com*.");
+      return true;
+    }
+    d.email = textoOriginal.toLowerCase();
+    sessao.etapa = "shekinah_matricula_nascimento";
+    await responder(client, msg.from, "📅 Informe a *data de nascimento* no formato *DD/MM/AAAA*.");
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_nascimento") {
+    const nascimento = dataNascimentoValida(textoOriginal);
+    if (!nascimento) {
+      await responder(client, msg.from, "Data inválida. Digite no formato *DD/MM/AAAA*.");
+      return true;
+    }
+    d.nascimento = textoOriginal;
+    sessao.menorDeIdade = verificarMenorDeIdade(nascimento);
+
+    if (sessao.menorDeIdade) {
+      sessao.etapa = "shekinah_matricula_cpf_responsavel";
+      await responder(
+        client,
+        msg.from,
+        "🧒 Identifiquei pela data de nascimento que o aluno é *menor de 18 anos*.\\n\\nInforme o *CPF de um dos responsáveis*."
+      );
+      return true;
+    }
+
+    sessao.atendimentoHumano = true;
+    sessao.etapa = "atendimento_humano";
+    await responder(client, msg.from, finalizarMatriculaShekinah(sessao));
+    return true;
+  }
+
+  if (sessao.etapa === "shekinah_matricula_cpf_responsavel") {
+    if (!cpfValido(textoOriginal)) {
+      await responder(client, msg.from, "CPF inválido. Digite os *11 números do CPF de um dos responsáveis*.");
+      return true;
+    }
+    const cpfResponsavel = formatarCpf(textoOriginal);
+    if (cpfResponsavel === d.cpf) {
+      await responder(client, msg.from, "O CPF do responsável precisa ser diferente do CPF do aluno. Informe o *CPF de um responsável*.");
+      return true;
+    }
+    d.cpfResponsavel = cpfResponsavel;
+    sessao.atendimentoHumano = true;
+    sessao.etapa = "atendimento_humano";
+    await responder(client, msg.from, finalizarMatriculaShekinah(sessao));
+    return true;
+  }
+
+  return false;
+}
+
+// =====================================
+// FUNIL DE ATENDIMENTO`,
+  "coleta enxuta da matrícula Shekinah"
+);
 
 substituirObrigatorio(
   'async function responder(client, destino, mensagem) {\n  await delay(900);\n\n  const destinoResolvido = await resolverDestino(client, destino);',
