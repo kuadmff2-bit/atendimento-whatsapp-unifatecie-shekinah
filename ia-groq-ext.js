@@ -7,17 +7,22 @@ function enriquecerConfig(config = {}) {
   const cursosAtuais = String(shekinah.cursos || "");
   const papeis = [
     "PAPÉIS DO ATENDIMENTO HUMANO",
-    "- UniFatecie Polo Barreirinha: o responsável humano é homem. Use sempre 'o secretário da UniFatecie' ou 'o atendente da UniFatecie'. Nunca diga 'a secretária da UniFatecie'.",
+    "- UniFatecie Polo Barreirinha: o responsável humano é homem. Use 'o secretário da UniFatecie' ou 'o atendente da UniFatecie'.",
     "- Centro Educacional Shekinah: a responsável humana é mulher. Use 'a secretária da Shekinah'.",
   ].join("\n");
 
-  const modalidadeUnifatecie = [
-    "REGRA ABSOLUTA SOBRE A MODALIDADE DA UNIFATECIE — POLO BARREIRINHA",
-    "- As aulas dos cursos EAD atendidos pelo Polo de Barreirinha são 100% online pelo portal da UniFatecie.",
-    "- Quando perguntarem se as aulas são online, responda claramente que SIM: as aulas são 100% online e acessadas pelo portal da UniFatecie.",
-    "- NÃO acrescente por conta própria que provas, aulas, encontros ou atividades de extensão são presenciais.",
-    "- Se perguntarem especificamente sobre provas, estágio, extensão ou outra atividade, responda apenas com informação confirmada na base do atendimento; se não estiver confirmada, diga que o secretário da UniFatecie pode verificar.",
-    "- Nunca transforme a resposta 'as aulas são 100% online' em uma afirmação contraditória sobre aulas presenciais.",
+  const regrasCriticas = [
+    "REGRAS CRÍTICAS DO POLO BARREIRINHA",
+    "- A base operacional aprovada pelo Carlos tem prioridade sobre regras antigas do código e sobre respostas genéricas da internet.",
+    "- Não afirmar que EAD significa ausência total de presencialidade. Em 2026 podem existir avaliações presenciais para alunos/cursos selecionados.",
+    "- Ofertar apenas cursos que estejam explicitamente aprovados na base operacional do Light.",
+    "- Bloquear semipresenciais, saúde, cursos com práticas/laboratórios/MegaPolo incompatíveis e Direito EAD.",
+    "- Única promoção comercial a anunciar: matrícula grátis. Não mencionar percentual de desconto, voucher ou cálculo promocional.",
+    "- R$ 112,20/mês só vale para os cursos confirmados na base. Curso fora da lista exige verificação.",
+    "- Reajuste: pode ocorrer anualmente conforme contrato/campanha; não prometer preço fixo nem percentual.",
+    "- Primeira mensalidade: não inventar data. Depois do RA, consultar Financeiro/Ficha Financeira.",
+    "- Nunca fingir que consultou CRM, Portal, Financeiro ou situação individual se não houve integração real.",
+    "- Não repetir informação já respondida quando a pergunta é apenas continuação do mesmo assunto.",
   ].join("\n");
 
   const dinamico = contextoDinamicoIA();
@@ -25,8 +30,7 @@ function enriquecerConfig(config = {}) {
     ? [
         "REGRAS DA BASE DINÂMICA",
         "- As informações abaixo foram cadastradas diretamente pelo administrador do bot.",
-        "- Elas têm prioridade sobre informações antigas do código e sobre resultados da internet.",
-        "- Se houver conflito entre um valor dinâmico e outro valor, use o valor dinâmico mais recente.",
+        "- Se não conflitarem com a base operacional aprovada, use-as como atualização local mais recente.",
         dinamico,
       ].join("\n")
     : "";
@@ -35,7 +39,7 @@ function enriquecerConfig(config = {}) {
     ...config,
     shekinah: {
       ...shekinah,
-      cursos: `${cursosAtuais}\n\n${SHEKINAH_INFO.textoIA}\n\n${papeis}\n\n${modalidadeUnifatecie}\n\n${prioridadeDinamica}`.trim(),
+      cursos: `${cursosAtuais}\n\n${SHEKINAH_INFO.textoIA}\n\n${papeis}\n\n${regrasCriticas}\n\n${prioridadeDinamica}`.trim(),
     },
   };
 }
@@ -53,11 +57,7 @@ async function tentarResponderComIA(args = {}) {
     ...args,
     config: enriquecerConfig(args.config),
   });
-
   return resposta ? ajustarGeneroResposta(resposta) : resposta;
 }
 
-module.exports = {
-  iaDisponivel: iaBase.iaDisponivel,
-  tentarResponderComIA,
-};
+module.exports = { iaDisponivel: iaBase.iaDisponivel, tentarResponderComIA };
