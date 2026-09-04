@@ -1,5 +1,6 @@
 const iaBase = require("./ia-groq");
 const SHEKINAH_INFO = require("./shekinah-info");
+const { contextoDinamicoIA } = require("./autonomia");
 
 function enriquecerConfig(config = {}) {
   const shekinah = config.shekinah || {};
@@ -19,11 +20,22 @@ function enriquecerConfig(config = {}) {
     "- Nunca transforme a resposta 'as aulas são 100% online' em uma afirmação contraditória sobre aulas presenciais.",
   ].join("\n");
 
+  const dinamico = contextoDinamicoIA();
+  const prioridadeDinamica = dinamico
+    ? [
+        "REGRAS DA BASE DINÂMICA",
+        "- As informações abaixo foram cadastradas diretamente pelo administrador do bot.",
+        "- Elas têm prioridade sobre informações antigas do código e sobre resultados da internet.",
+        "- Se houver conflito entre um valor dinâmico e outro valor, use o valor dinâmico mais recente.",
+        dinamico,
+      ].join("\n")
+    : "";
+
   return {
     ...config,
     shekinah: {
       ...shekinah,
-      cursos: `${cursosAtuais}\n\n${SHEKINAH_INFO.textoIA}\n\n${papeis}\n\n${modalidadeUnifatecie}`.trim(),
+      cursos: `${cursosAtuais}\n\n${SHEKINAH_INFO.textoIA}\n\n${papeis}\n\n${modalidadeUnifatecie}\n\n${prioridadeDinamica}`.trim(),
     },
   };
 }
