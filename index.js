@@ -89,6 +89,12 @@ substituirTodosObrigatorio(
   "encaminhamento automático sem encerrar o atendimento"
 );
 
+substituirObrigatorio(
+  '      logQR: false,',
+  '      logQR: true,',
+  "QR Code visível nos logs do Railway"
+);
+
 const moduloBase = new Module(caminhoBase, module);
 moduloBase.filename = caminhoBase;
 moduloBase.paths = Module._nodeModulePaths(__dirname);
