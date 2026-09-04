@@ -5,6 +5,9 @@ const http = require("http");
 const PASTA_TOKENS = path.join(process.cwd(), "tokens");
 const ARQUIVO_QR = path.join(PASTA_TOKENS, "qr-atual.png");
 
+let estadoConexao = "iniciando";
+let whatsappConectado = false;
+
 function garantirPasta() {
   fs.mkdirSync(PASTA_TOKENS, { recursive: true });
 }
@@ -37,13 +40,25 @@ function salvarQrComoPng(qr) {
 
 function paginaQr() {
   const temQr = fs.existsSync(ARQUIVO_QR);
-  const conteudo = temQr
-    ? `<div class="status">📲 Escaneie o QR Code</div>
-       <img src="/qr.png?t=${Date.now()}" alt="QR Code do WhatsApp">
-       <p>WhatsApp → Aparelhos conectados → Conectar um aparelho</p>
-       <small>O QR é atualizado automaticamente quando necessário.</small>`
-    : `<div class="status">⏳ Preparando o QR Code...</div>
-       <p>Aguarde alguns segundos. Esta página atualiza automaticamente.</p>`;
+  let conteudo;
+
+  if (whatsappConectado) {
+    conteudo =
+      '<div class="status sucesso">✅ WhatsApp conectado e pronto!</div>' +
+      '<p>O atendimento automático já pode receber mensagens.</p>' +
+      `<small>Estado: ${estadoConexao}</small>`;
+  } else if (temQr) {
+    conteudo =
+      '<div class="status">📲 Escaneie o QR Code</div>' +
+      `<img src="/qr.png?t=${Date.now()}" alt="QR Code do WhatsApp">` +
+      '<p>WhatsApp → Aparelhos conectados → Conectar um aparelho</p>' +
+      `<small>Estado atual: ${estadoConexao}. A página atualiza automaticamente.</small>`;
+  } else {
+    conteudo =
+      '<div class="status">⏳ Preparando o QR Code...</div>' +
+      '<p>Aguarde alguns segundos. O WhatsApp ainda não confirmou uma sessão ativa.</p>' +
+      `<small>Estado atual: ${estadoConexao}</small>`;
+  }
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -58,6 +73,7 @@ function paginaQr() {
     main{width:min(100%,520px);background:#202c33;border:1px solid #34444d;border-radius:20px;padding:28px;text-align:center;box-shadow:0 18px 50px #0008}
     h1{font-size:25px;margin:0 0 22px}
     .status{font-size:21px;font-weight:700;margin-bottom:18px}
+    .sucesso{color:#25d366}
     img{display:block;width:min(100%,400px);height:auto;aspect-ratio:1/1;object-fit:contain;margin:0 auto 20px;background:white;padding:18px;border-radius:14px;image-rendering:pixelated}
     p{line-height:1.5;color:#d1d7db}
     small{color:#8696a0}
@@ -72,11 +88,36 @@ function paginaQr() {
 </html>`;
 }
 
-// Remove qualquer QR antigo ao iniciar um novo processo. O WPPConnect
-// gravará um novo assim que a autenticação solicitar o código.
-removerQrAtual();
+function responderQrPng(res) {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("X-Content-Type-Options", "nosniff");
 
-// Intercepta a criação do WPPConnect para persistir o QR em PNG.
+  if (!fs.existsSync(ARQUIVO_QR)) {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("QR Code ainda não disponível.");
+    return;
+  }
+
+  res.writeHead(200, { "Content-Type": "image/png" });
+  fs.createReadStream(ARQUIVO_QR).pipe(res);
+}
+
+function responderPaginaQr(res) {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.end(paginaQr());
+}
+
+// Remove QR antigo ao iniciar um novo processo.
+removerQrAtual();
+console.log("🧩 Runtime de QR carregado.");
+
+// Intercepta o WPPConnect para persistir o QR e só liberar o cliente
+// quando o próprio WPPConnect confirmar uma sessão realmente ativa.
 try {
   const wppconnect = require("@wppconnect-team/wppconnect");
   const criarOriginal = wppconnect.create.bind(wppconnect);
@@ -85,69 +126,101 @@ try {
     const catchQrOriginal = opcoes.catchQR;
     const statusOriginal = opcoes.statusFind;
 
-    return criarOriginal({
-      ...opcoes,
-      catchQR: (qr, asciiQR, tentativa, urlCode) => {
-        salvarQrComoPng(qr);
-        if (typeof catchQrOriginal === "function") {
-          return catchQrOriginal(qr, asciiQR, tentativa, urlCode);
-        }
-      },
-      statusFind: (status, sessao) => {
-        if (["isLogged", "qrReadSuccess", "inChat"].includes(String(status))) {
-          removerQrAtual();
-        }
-        if (typeof statusOriginal === "function") {
-          return statusOriginal(status, sessao);
-        }
-      },
+    let loginConfirmado = false;
+    let liberarLogin;
+    const aguardarLogin = new Promise((resolve) => {
+      liberarLogin = resolve;
+    });
+
+    function confirmarLogin() {
+      if (loginConfirmado) return;
+      loginConfirmado = true;
+      liberarLogin();
+    }
+
+    const promessaCliente = Promise.resolve(
+      criarOriginal({
+        ...opcoes,
+        catchQR: (qr, asciiQR, tentativa, urlCode) => {
+          whatsappConectado = false;
+          estadoConexao = `aguardando QR (tentativa ${tentativa})`;
+          salvarQrComoPng(qr);
+
+          if (typeof catchQrOriginal === "function") {
+            return catchQrOriginal(qr, asciiQR, tentativa, urlCode);
+          }
+        },
+        statusFind: (status, sessao) => {
+          const atual = String(status || "");
+          estadoConexao = atual || "desconhecido";
+
+          if (["isLogged", "inChat"].includes(atual)) {
+            whatsappConectado = true;
+            removerQrAtual();
+            confirmarLogin();
+          } else if (
+            [
+              "notLogged",
+              "qrReadFail",
+              "disconnectedMobile",
+              "deleteToken",
+              "browserClose",
+              "serverClose",
+              "autocloseCalled",
+            ].includes(atual)
+          ) {
+            whatsappConectado = false;
+          }
+
+          // qrReadSuccess significa apenas que o QR foi lido; ainda não é
+          // confirmação de que a sessão está pronta. Não repassamos esse estado
+          // para a lógica antiga para evitar o falso "conectado".
+          if (atual === "qrReadSuccess") {
+            console.log("📲 QR lido. Aguardando confirmação real de login...");
+            return;
+          }
+
+          if (typeof statusOriginal === "function") {
+            return statusOriginal(status, sessao);
+          }
+        },
+      })
+    );
+
+    return promessaCliente.then(async (client) => {
+      if (!loginConfirmado) {
+        console.log("⏳ Cliente criado, aguardando isLogged/inChat antes de ativar o bot...");
+        await aguardarLogin;
+      }
+      return client;
     });
   };
 } catch (error) {
   console.warn("⚠️ Não foi possível ativar a persistência do QR:", error?.message || error);
 }
 
-// Acrescenta rotas confiáveis ao mesmo servidor HTTP já usado pelo bot.
-const criarServidorOriginal = http.createServer.bind(http);
-http.createServer = function criarServidorComQr(...args) {
-  const indiceListener = args.findIndex((arg) => typeof arg === "function");
-  if (indiceListener < 0) return criarServidorOriginal(...args);
-
-  const listenerOriginal = args[indiceListener];
-  args[indiceListener] = (req, res) => {
+// Intercepta as requisições no nível do servidor HTTP. Isso funciona mesmo
+// que o servidor principal tenha sido criado antes/depois deste módulo.
+const emitirOriginal = http.Server.prototype.emit;
+http.Server.prototype.emit = function emitirComRotasQr(evento, ...args) {
+  if (evento === "request") {
+    const [req, res] = args;
     let pathname = "/";
+
     try {
       pathname = new URL(req.url, "http://localhost").pathname;
     } catch (_) {}
 
     if (pathname === "/qr.png") {
-      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-      res.setHeader("Pragma", "no-cache");
-      res.setHeader("X-Content-Type-Options", "nosniff");
-
-      if (!fs.existsSync(ARQUIVO_QR)) {
-        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-        res.end("QR Code ainda não disponível.");
-        return;
-      }
-
-      res.writeHead(200, { "Content-Type": "image/png" });
-      fs.createReadStream(ARQUIVO_QR).pipe(res);
-      return;
+      responderQrPng(res);
+      return true;
     }
 
-    if (pathname === "/qr-view" || (pathname === "/" && fs.existsSync(ARQUIVO_QR))) {
-      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-      res.setHeader("Referrer-Policy", "no-referrer");
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("X-Frame-Options", "DENY");
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(paginaQr());
-      return;
+    if (pathname === "/" || pathname === "/qr-view") {
+      responderPaginaQr(res);
+      return true;
     }
+  }
 
-    return listenerOriginal(req, res);
-  };
-
-  return criarServidorOriginal(...args);
+  return emitirOriginal.call(this, evento, ...args);
 };
