@@ -48,8 +48,8 @@ substituirObrigatorio(
 );
 
 substituirObrigatorio(
-  '    const LIMITE_SESSAO = 30 * 60 * 1000;',
-  '    const LIMITE_SESSAO = 6 * 60 * 60 * 1000;',
+  '  const LIMITE_SESSAO = 30 * 60 * 1000;',
+  '  const LIMITE_SESSAO = 6 * 60 * 60 * 1000;',
   "janela de memória das sessões"
 );
 
