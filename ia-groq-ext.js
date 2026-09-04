@@ -10,11 +10,20 @@ function enriquecerConfig(config = {}) {
     "- Centro Educacional Shekinah: a responsável humana é mulher. Use 'a secretária da Shekinah'.",
   ].join("\n");
 
+  const modalidadeUnifatecie = [
+    "REGRA ABSOLUTA SOBRE A MODALIDADE DA UNIFATECIE — POLO BARREIRINHA",
+    "- As aulas dos cursos EAD atendidos pelo Polo de Barreirinha são 100% online pelo portal da UniFatecie.",
+    "- Quando perguntarem se as aulas são online, responda claramente que SIM: as aulas são 100% online e acessadas pelo portal da UniFatecie.",
+    "- NÃO acrescente por conta própria que provas, aulas, encontros ou atividades de extensão são presenciais.",
+    "- Se perguntarem especificamente sobre provas, estágio, extensão ou outra atividade, responda apenas com informação confirmada na base do atendimento; se não estiver confirmada, diga que o secretário da UniFatecie pode verificar.",
+    "- Nunca transforme a resposta 'as aulas são 100% online' em uma afirmação contraditória sobre aulas presenciais.",
+  ].join("\n");
+
   return {
     ...config,
     shekinah: {
       ...shekinah,
-      cursos: `${cursosAtuais}\n\n${SHEKINAH_INFO.textoIA}\n\n${papeis}`.trim(),
+      cursos: `${cursosAtuais}\n\n${SHEKINAH_INFO.textoIA}\n\n${papeis}\n\n${modalidadeUnifatecie}`.trim(),
     },
   };
 }
