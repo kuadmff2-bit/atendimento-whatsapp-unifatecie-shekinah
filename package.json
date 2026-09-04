@@ -5,8 +5,8 @@
   "description": "Atendimento automático via WhatsApp para UniFatecie e Centro Educacional Shekinah.",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "check": "node --check index.js && node --check legacy-index.js && node --check ia-groq.js && node --check ia-groq-ext.js && node --check audio-groq.js && node --check autonomia.js && node --check conversation-core.js && node --check conversation-core-ext.js && node --check atendimento-fixes.js && node --check shekinah-info.js && node --check shekinah-forward.js"
+    "start": "node -r ./ead-hook.js index.js",
+    "check": "node --check index.js && node --check legacy-index.js && node --check ia-groq.js && node --check ia-groq-ext.js && node --check audio-groq.js && node --check autonomia.js && node --check conversation-core.js && node --check conversation-core-ext.js && node --check atendimento-fixes.js && node --check shekinah-info.js && node --check shekinah-forward.js && node --check shekinah-ead.js && node --check ead-hook.js"
   },
   "engines": { "node": ">=18.0.0" },
   "dependencies": {
