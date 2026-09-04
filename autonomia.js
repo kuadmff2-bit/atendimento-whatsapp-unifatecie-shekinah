@@ -4,6 +4,14 @@ const path = require("path");
 const PASTA_DADOS = path.join(process.cwd(), "tokens");
 const ARQUIVO_AUTONOMIA = path.join(PASTA_DADOS, "autonomia.json");
 const ARQUIVO_SESSOES = path.join(PASTA_DADOS, "sessoes.json");
+const ARQUIVO_RESET_WHATSAPP = path.join(PASTA_DADOS, "reset-whatsapp.flag");
+
+const ARQUIVOS_PERSISTENTES = new Set([
+  "autonomia.json",
+  "sessoes.json",
+  "contato-secretaria.json",
+  "reset-whatsapp.flag",
+]);
 
 const estadoPadrao = {
   versao: 1,
@@ -12,6 +20,7 @@ const estadoPadrao = {
   promocoes: {},
   cursosUnifatecie: {},
   cursosShekinah: {},
+  trocaNumeroPendenteAte: null,
   metricas: {
     mensagens: 0,
     audios: 0,
@@ -32,6 +41,35 @@ function escreverJsonAtomico(arquivo, dados) {
   fs.writeFileSync(temporario, JSON.stringify(dados, null, 2), "utf8");
   fs.renameSync(temporario, arquivo);
 }
+
+function limparCredenciaisWhatsappNoBoot() {
+  try {
+    if (!fs.existsSync(ARQUIVO_RESET_WHATSAPP)) return;
+
+    garantirPasta();
+    let removidos = 0;
+
+    for (const item of fs.readdirSync(PASTA_DADOS, { withFileTypes: true })) {
+      if (ARQUIVOS_PERSISTENTES.has(item.name)) continue;
+
+      fs.rmSync(path.join(PASTA_DADOS, item.name), {
+        recursive: true,
+        force: true,
+      });
+      removidos += 1;
+    }
+
+    fs.rmSync(ARQUIVO_RESET_WHATSAPP, { force: true });
+    console.log(`🔄 Troca de número: ${removidos} item(ns) de credencial do WhatsApp removido(s).`);
+    console.log("📲 A próxima conexão deverá solicitar um novo QR Code.");
+  } catch (error) {
+    console.error("❌ Não foi possível limpar as credenciais antigas do WhatsApp:", error.message);
+    throw error;
+  }
+}
+
+// Executa antes de o WPPConnect abrir o navegador.
+limparCredenciaisWhatsappNoBoot();
 
 function carregarEstado() {
   try {
@@ -151,7 +189,6 @@ function registrarEvento(tipo) {
   if (tipo === "matricula") m.matriculasIniciadas += 1;
   m.atualizadoEm = new Date().toISOString();
 
-  // Reduz escrita em disco: salva a cada 10 mensagens, ou imediatamente em eventos importantes.
   if (tipo !== "mensagem" || m.mensagens % 10 === 0) salvarEstado();
 }
 
@@ -221,7 +258,8 @@ function ajudaAdmin() {
     "*atualizar curso NOME | mensalidade = VALOR*\n" +
     "*atualizar curso NOME | duração = VALOR*\n" +
     "*atualizar curso NOME | estágio = VALOR*\n" +
-    "*listar erros* — últimos erros registrados\n\n" +
+    "*listar erros* — últimos erros registrados\n" +
+    "*trocar numero do robo* — inicia troca segura do WhatsApp conectado\n\n" +
     "✅ As alterações ficam salvas no volume do Railway e entram na base da IA sem novo deploy."
   );
 }
@@ -241,6 +279,44 @@ function listarErros() {
   );
 }
 
+function solicitarTrocaNumero() {
+  estado.trocaNumeroPendenteAte = Date.now() + 5 * 60 * 1000;
+  salvarEstado();
+
+  return (
+    "⚠️ *TROCA DO NÚMERO DO ROBÔ*\n\n" +
+    "Isso vai desconectar o WhatsApp atual do robô e gerar uma nova conexão por QR Code.\n\n" +
+    "✅ Cursos, promoções, base da IA, métricas e dados persistentes serão mantidos.\n" +
+    "📱 Somente a sessão do WhatsApp será trocada.\n\n" +
+    "Para confirmar nos próximos 5 minutos, digite exatamente:\n" +
+    "*confirmar troca numero*\n\n" +
+    "Para desistir, digite *cancelar troca numero*."
+  );
+}
+
+function confirmarTrocaNumero() {
+  const limite = Number(estado.trocaNumeroPendenteAte || 0);
+  if (!limite || Date.now() > limite) {
+    estado.trocaNumeroPendenteAte = null;
+    salvarEstado();
+    return "⚠️ A confirmação expirou. Digite *trocar numero do robo* novamente.";
+  }
+
+  garantirPasta();
+  fs.writeFileSync(ARQUIVO_RESET_WHATSAPP, new Date().toISOString(), "utf8");
+  estado.trocaNumeroPendenteAte = null;
+  salvarEstado();
+
+  // Dá tempo para a resposta ser enviada antes do Railway reiniciar o processo.
+  setTimeout(() => process.exit(1), 3500);
+
+  return (
+    "🔄 *Troca de número confirmada.*\n\n" +
+    "O robô vai reiniciar agora e remover somente a sessão antiga do WhatsApp.\n" +
+    "📲 Depois, abra a página do bot no Railway para ver o novo QR Code e escaneie com o novo número."
+  );
+}
+
 function tratarComandoAdmin(textoOriginal, remetente) {
   if (!ehAdmin(remetente)) return null;
   const original = String(textoOriginal || "").trim();
@@ -252,6 +328,20 @@ function tratarComandoAdmin(textoOriginal, remetente) {
   if (t === "status bot" || t === "status do bot") return resumoStatus();
   if (t === "listar fatos") return listarFatos();
   if (t === "listar erros") return listarErros();
+
+  if (t === "trocar numero do robo" || t === "trocar numero robo") {
+    return solicitarTrocaNumero();
+  }
+
+  if (t === "cancelar troca numero" || t === "cancelar troca do numero") {
+    estado.trocaNumeroPendenteAte = null;
+    salvarEstado();
+    return "✅ Troca do número cancelada. O WhatsApp atual continuará conectado.";
+  }
+
+  if (t === "confirmar troca numero" || t === "confirmar troca do numero") {
+    return confirmarTrocaNumero();
+  }
 
   let match = original.match(/^definir\s+fato\s+(.+?)\s*=\s*(.+)$/i);
   if (match) {
@@ -305,8 +395,7 @@ function tratarComandoAdmin(textoOriginal, remetente) {
     return `✅ *${curso}* atualizado: ${campo} = *${valor}*`;
   }
 
-  // Só intercepta frases que parecem comandos administrativos.
-  if (/^(admin|status bot|definir fato|remover fato|listar fatos|listar erros|promo[cç][aã]o|remover promo[cç][aã]o|atualizar curso)/i.test(original)) {
+  if (/^(admin|status bot|definir fato|remover fato|listar fatos|listar erros|promo[cç][aã]o|remover promo[cç][aã]o|atualizar curso|trocar numero|confirmar troca|cancelar troca)/i.test(original)) {
     return "⚠️ Não entendi o comando administrativo. Digite *admin ajuda*.";
   }
 
