@@ -61,20 +61,8 @@ substituirObrigatorio(
 
 substituirObrigatorio(
   '    const sessao = obterSessao(msg.from);\n    const textoOriginal = typeof msg.body === "string" ? msg.body.trim() : "";',
-  `    const sessao = obterSessao(msg.from);\n    registrarEvento("mensagem");\n\n    const textoDigitado = typeof msg.body === "string" ? msg.body.trim() : "";\n    const respostaAdmin = tratarComandoAdmin(textoDigitado, msg.from);\n    if (respostaAdmin) {\n      aplicarOverridesCursos(CURSOS_UNIFATECIE);\n      await responder(client, msg.from, respostaAdmin);\n      persistirSessoes(sessoes);\n      return;\n    }\n\n    let textoOriginal = textoDigitado;`,
-  "comandos administrativos antes do atendimento"
-);
-
-substituirObrigatorio(
-  '    let textoOriginal = typeof msg.body === "string" ? msg.body.trim() : "";\n    const mensagemEraAudio = ehMensagemDeAudio(msg);',
-  '    const mensagemEraAudio = ehMensagemDeAudio(msg);',
-  "evitar redeclaração do texto após comandos administrativos"
-);
-
-substituirObrigatorio(
-  '    if (mensagemEraAudio) {\n      const transcricaoAudio = await transcreverAudioWhatsApp(client, msg);',
-  '    if (mensagemEraAudio) {\n      registrarEvento("audio");\n      const transcricaoAudio = await transcreverAudioWhatsApp(client, msg);',
-  "métrica de áudio"
+  `    const sessao = obterSessao(msg.from);\n    registrarEvento("mensagem");\n\n    const textoDigitado = typeof msg.body === "string" ? msg.body.trim() : "";\n\n    // Comandos administrativos são processados antes da IA e nunca ficam visíveis para outros usuários.\n    const respostaAdmin = tratarComandoAdmin(textoDigitado, msg.from);\n    if (respostaAdmin) {\n      aplicarOverridesCursos(CURSOS_UNIFATECIE);\n      await responder(client, msg.from, respostaAdmin);\n      persistirSessoes(sessoes);\n      return;\n    }\n\n    let textoOriginal = textoDigitado;\n    const mensagemEraAudio = ehMensagemDeAudio(msg);\n\n    if (mensagemEraAudio) {\n      registrarEvento("audio");\n      const transcricaoAudio = await transcreverAudioWhatsApp(client, msg);\n\n      if (!transcricaoAudio?.ok) {\n        await responder(\n          client,\n          msg.from,\n          transcricaoAudio?.mensagem ||\n            "🎤 Não consegui entender esse áudio. Pode tentar novamente ou escrever a mensagem? 😊"\n        );\n        return;\n      }\n\n      textoOriginal = String(transcricaoAudio.texto || "").trim();\n      sessao.ultimaTranscricaoAudio = textoOriginal;\n      sessao.ultimoAudioEm = Date.now();\n      console.log(\`🎤 Áudio recebido e transcrito (\${textoOriginal.length} caracteres).\`);\n    }`,
+  "administração, áudio e memória antes do atendimento"
 );
 
 substituirObrigatorio(
