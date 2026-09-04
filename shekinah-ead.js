@@ -2,7 +2,7 @@ const URL = "https://curso.eadaulas.com/shekinah/lista_cursos.php";
 const EscolaAPI = require("./escola-avancada-api");
 
 let cache = { em: 0, cursos: [], fonte: "" };
-const CACHE_MS = 30 * 60 * 1000;
+const CACHE_MS = 20 * 60 * 1000;
 const TAMANHO_LISTA = 20;
 
 function limpar(s = "") {
@@ -44,14 +44,14 @@ function extrair(html) {
 }
 
 async function listarPaginaPublica() {
-  const r = await fetch(URL, { headers: { "user-agent": "Mozilla/5.0 Light-Shekinah/2.1" } });
+  const r = await fetch(URL, { headers: { "user-agent": "Mozilla/5.0 Light-Shekinah/3.0" } });
   if (!r.ok) throw new Error(`Catálogo EAD HTTP ${r.status}`);
   const cursos = extrair(await r.text());
   if (!cursos.length) throw new Error("Catálogo EAD vazio");
   return cursos;
 }
 
-function mapearCursoApi(c) {
+function mapearCursoApi(c = {}) {
   return {
     id: c.id ? Number(c.id) : null,
     nome: limpar(c.nome),
@@ -85,7 +85,7 @@ function mesclarCursos(apiCursos, paginaCursos) {
     saida.push({
       ...(pagina || {}),
       ...api,
-      id: pagina?.id || api.id || null,
+      id: api.id || pagina?.id || null,
       descricao: api.descricao || pagina?.descricao || "",
       quantidadeAulas: api.quantidadeAulas || pagina?.quantidadeAulas || 0,
       aulas: pagina?.aulas || [],
@@ -96,7 +96,6 @@ function mesclarCursos(apiCursos, paginaCursos) {
   for (const pagina of paginaCursos) {
     if (!usados.has(norm(pagina.nome))) saida.push(pagina);
   }
-
   return saida;
 }
 
@@ -114,6 +113,7 @@ async function listar(force = false) {
       if (Array.isArray(r)) apiCursos = r;
     } catch (e) {
       erroApi = e;
+      console.warn("⚠️ API EAD cursos:", e?.message || e);
     }
   }
 
@@ -121,6 +121,7 @@ async function listar(force = false) {
     paginaCursos = await listarPaginaPublica();
   } catch (e) {
     erroPagina = e;
+    console.warn("⚠️ Página pública EAD:", e?.message || e);
   }
 
   let cursos = [];
@@ -151,18 +152,24 @@ function cursosAtivos(cs) {
 }
 
 const STOP = new Set([
-  "tem","curso","cursos","de","da","do","das","dos","ead","online","na","no","em","shekinah","oferece","oferecem","vocês","voces","voce","eu","quero","queria","gostaria","sobre","um","uma","e","a","o","para","pra","me","mostra","mostrar","temos"
+  "tem","curso","cursos","de","da","do","das","dos","ead","online","na","no","em","shekinah","oferece","oferecem",
+  "voces","voce","eu","quero","queria","gostaria","sobre","um","uma","e","a","o","para","pra","me","mostra","mostrar","temos",
+  "qual","quais","quanto","quantos","quanto","custa","custam","valor","valores","preco","precos","mensalidade","mensalidades","saber","ter"
 ]);
 
 const ALIASES = {
   informatica: ["informatica", "tecnologia", "computador", "computadores", "windows", "office", "excel", "word", "powerpoint", "access", "programacao", "software", "canva", "autocad", "photoshop", "corel", "app", "game"],
-  culinaria: ["culinaria", "culinario", "gastronomia", "confeitaria", "cozinha", "doces", "salgados", "panificacao", "padeiro", "bolo", "bolos", "pizzaiolo", "barista", "alimentos"],
+  culinaria: ["culinaria", "culinario", "gastronomia", "confeitaria", "doces", "salgados", "panificacao", "padeiro", "bolo", "bolos", "pizzaiolo", "barista", "alimentos", "cozinheiro"],
   administracao: ["administracao", "administrativo", "gestao", "rh", "recursos humanos", "departamento pessoal", "secretariado"],
   vendas: ["vendas", "marketing", "telemarketing", "instagram", "midias sociais", "ecommerce", "loja virtual"]
 };
 
 function termosConsulta(texto) {
-  const palavras = norm(texto).replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean).filter(p => !STOP.has(p) && p.length > 2);
+  const palavras = norm(texto)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(p => !STOP.has(p) && p.length > 2);
   return [...new Set(palavras)];
 }
 
@@ -170,7 +177,10 @@ function expandirTermos(termos) {
   const saida = new Set(termos);
   for (const termo of termos) {
     for (const [chave, aliases] of Object.entries(ALIASES)) {
-      if (termo === chave || aliases.includes(termo)) aliases.forEach(a => saida.add(norm(a)));
+      if (termo === chave || aliases.includes(termo)) {
+        saida.add(chave);
+        aliases.forEach(a => saida.add(norm(a)));
+      }
     }
   }
   return [...saida];
@@ -179,20 +189,22 @@ function expandirTermos(termos) {
 function pontuarCurso(c, termosOriginais, termosExpandidos) {
   const nome = norm(c.nome);
   const categoria = norm(`${c.categoriaInterna || ""} ${c.categoriaLoja || ""}`);
-  const desc = norm(c.descricao || "");
   let score = 0;
+
   for (const termo of termosOriginais) {
-    if (nome === termo) score += 30;
-    else if (nome.includes(termo)) score += 16;
-    if (categoria.includes(termo)) score += 12;
-    if (desc.includes(termo)) score += 4;
+    if (nome === termo) score += 100;
+    else if (nome.startsWith(termo)) score += 60;
+    else if (nome.includes(termo)) score += 45;
+    if (categoria.includes(termo)) score += 30;
   }
+
   for (const termo of termosExpandidos) {
     if (termosOriginais.includes(termo)) continue;
-    if (nome.includes(termo)) score += 5;
-    if (categoria.includes(termo)) score += 4;
-    if (desc.includes(termo)) score += 1;
+    if (nome === termo) score += 24;
+    else if (nome.includes(termo)) score += 14;
+    if (categoria.includes(termo)) score += 8;
   }
+
   return score;
 }
 
@@ -209,15 +221,28 @@ function pesquisarCursos(cs, texto) {
 
 async function buscar(texto) {
   const cs = cursosAtivos(await listar());
-  return pesquisarCursos(cs, texto).slice(0, 8);
+  return pesquisarCursos(cs, texto).slice(0, 12);
+}
+
+function precoDisponivel(c) {
+  return c?.precoPromocional || c?.preco || "";
 }
 
 function linhaValor(c) {
   if (norm(c.precoMostrar) !== "sim") return "";
-  const valor = c.precoPromocional || c.preco;
+  const valor = precoDisponivel(c);
   if (!valor) return "";
   const parcelas = c.parcelas ? ` em até ${c.parcelas} parcela(s)` : "";
   return `\n💰 *Valor:* R$ ${valor}${parcelas}`;
+}
+
+function respostaValor(c) {
+  const valor = precoDisponivel(c);
+  if (!valor) {
+    return `💰 A plataforma não retornou um valor cadastrado para *${c.nome}* nesta consulta. Não vou inventar um preço. Posso te mostrar os detalhes do curso ou encaminhar a confirmação do valor.`;
+  }
+  const parcelas = c.parcelas ? `\n💳 Parcelamento cadastrado: até *${c.parcelas}x*.` : "";
+  return `💰 O valor cadastrado na plataforma para *${c.nome} — EAD Shekinah* é *R$ ${valor}*.${parcelas}`;
 }
 
 function linhaCarga(c) {
@@ -225,7 +250,15 @@ function linhaCarga(c) {
 }
 
 function detalhesCurso(c) {
-  return `🎓 *${c.nome} — EAD Shekinah*\n\n${c.descricao || ""}\n\n📚 O curso possui *${c.quantidadeAulas} aulas*.${linhaCarga(c)}${linhaValor(c)}\n\nSe quiser, posso mostrar o conteúdo programático completo. 😊`;
+  return `🎓 *${c.nome} — EAD Shekinah*\n\n${c.descricao || ""}\n\n📚 O curso possui *${c.quantidadeAulas} aulas*.${linhaCarga(c)}${linhaValor(c)}\n\nSe quiser, posso mostrar o conteúdo programático completo ou informar o valor. 😊`;
+}
+
+function conteudoCurso(c) {
+  if (Array.isArray(c.aulas) && c.aulas.length) {
+    const lista = c.aulas.map(a => `${String(a.numero).padStart(2, "0")}. ${a.titulo}`).join("\n");
+    return `🎓 *${c.nome} — EAD Shekinah*\n\n📚 *${c.quantidadeAulas} aulas*${linhaCarga(c)}\n\n${lista}`;
+  }
+  return `📚 *${c.nome}* possui *${c.quantidadeAulas} aulas*.${linhaCarga(c)}\n\nA lista detalhada das aulas não veio disponível nesta consulta.`;
 }
 
 function paginaLista(base, pagina = 0) {
@@ -237,30 +270,62 @@ function paginaLista(base, pagina = 0) {
   return `🎓 A *Shekinah* tem *${base.length} cursos EAD* disponíveis na plataforma.\n\n${linhas}\n\n${temMais ? "Digite *mais* para ver os próximos cursos, ou " : ""}diga o nome ou número do curso para ver os detalhes. 📚`;
 }
 
+function cursoAtualDaSessao(cs, sessao) {
+  const nome = norm(sessao?.eadCursoAtual || "");
+  if (!nome) return null;
+  return cs.find(c => norm(c.nome) === nome) || null;
+}
+
+function ehPerguntaValor(t) {
+  return /(^|\b)(valor|preco|quanto custa|custa quanto|qual o valor|qual valor|mensalidade|parcelas|parcelamento)(\b|$)/.test(t);
+}
+
+function ehPerguntaConteudo(t) {
+  return /(^|\b)(conteudo|grade|materia|materias|aulas|o que aprende|o que ensina)(\b|$)/.test(t);
+}
+
+function ehPerguntaCarga(t) {
+  return /carga horaria|quantas horas|duracao|quanto tempo/.test(t);
+}
+
 async function responder(texto, sessao = {}) {
   const t = norm(texto);
   const contextoEad = sessao.assuntoAtual === "shekinah_ead" || sessao.modalidadeShekinah === "ead" || /\bead\b|online|curso\.eadaulas|cursos ead/.test(t);
   const mencionaShekinah = /shekinah/.test(t);
   const mencionaCurso = /curso|cursos|aula|aulas|conteudo|grade|materia|materias/.test(t);
-  const consultaDisponibilidade = /^(tem|temos|voc[eê]s tem|ha|existe)|oferece|oferecem/.test(t);
 
   if (!contextoEad && !mencionaShekinah && !mencionaCurso) return null;
 
-  const cs = cursosAtivos(await listar());
+  let cs = cursosAtivos(await listar());
+  let atual = cursoAtualDaSessao(cs, sessao);
 
-  if (/^(mais|proximos|pr[oó]ximos|continuar|continua)$/.test(t) && Array.isArray(sessao.eadUltimaLista)) {
+  // Perguntas curtas como “e o valor?” sempre se referem ao último curso escolhido.
+  if (ehPerguntaValor(t)) {
+    if (atual) return respostaValor(atual);
+    return "💰 Claro. De qual curso EAD da Shekinah você quer saber o valor?";
+  }
+
+  if (ehPerguntaConteudo(t) && atual && !termosConsulta(texto).length) {
+    return conteudoCurso(atual);
+  }
+
+  if (ehPerguntaCarga(t) && atual) {
+    const carga = atual.cargaHoraria ? `${atual.cargaHoraria}h` : "não foi informada pela plataforma nesta consulta";
+    return `⏱️ A carga horária de *${atual.nome}* é *${carga}*.`;
+  }
+
+  if (/^(mais|proximos|proximo|continuar|continua)$/.test(t) && Array.isArray(sessao.eadUltimaLista)) {
     const proxima = Number(sessao.eadPagina || 0) + 1;
     const msg = paginaLista(sessao.eadUltimaLista, proxima);
     if (msg) {
       sessao.eadPagina = proxima;
       return msg;
     }
-    return "📚 Você já chegou ao fim da lista de cursos EAD. Se quiser, diga o nome de uma área ou curso que eu procuro para você. 😊";
+    return "📚 Você já chegou ao fim da lista de cursos EAD. Diga o nome de uma área ou curso que eu procuro para você. 😊";
   }
 
   if (/^\d{1,3}$/.test(t) && Array.isArray(sessao.eadUltimaLista)) {
-    const pos = Number(t) - 1;
-    const c = sessao.eadUltimaLista[pos];
+    const c = sessao.eadUltimaLista[Number(t) - 1];
     if (c) {
       sessao.eadCursoAtual = c.nome;
       return detalhesCurso(c);
@@ -270,38 +335,46 @@ async function responder(texto, sessao = {}) {
   if (/(quais|lista|listar|catalogo|opcoes).*(curso|ead)|(curso|cursos).*ead/.test(t)) {
     sessao.eadUltimaLista = cs;
     sessao.eadPagina = 0;
+    sessao.eadCursoAtual = null;
     return paginaLista(cs, 0);
   }
 
   const exato = cs.find(c => t.includes(norm(c.nome)));
   if (exato) {
     sessao.eadCursoAtual = exato.nome;
-    if (/(conteudo|grade|materia|materias|aulas|ensina|aprende)/.test(t) && exato.aulas?.length) {
-      const listaAulas = exato.aulas.map(a => `${String(a.numero).padStart(2, "0")}. ${a.titulo}`).join("\n");
-      return `🎓 *${exato.nome} — EAD Shekinah*\n\n${exato.descricao || ""}\n\n📚 *${exato.quantidadeAulas} aulas*${linhaCarga(exato)}${linhaValor(exato)}\n${listaAulas}`;
-    }
+    if (ehPerguntaConteudo(t)) return conteudoCurso(exato);
+    if (ehPerguntaValor(t)) return respostaValor(exato);
     return detalhesCurso(exato);
   }
 
-  const achados = pesquisarCursos(cs, texto);
-  if (achados.length) {
-    sessao.eadUltimaLista = achados;
-    sessao.eadPagina = 0;
-    if (achados.length === 1) {
-      sessao.eadCursoAtual = achados[0].nome;
-      return detalhesCurso(achados[0]);
-    }
-    const top = achados.slice(0, 12);
-    const linhas = top.map((c, i) => `${i + 1}. ${c.nome}`).join("\n");
-    const termo = termosConsulta(texto)[0] || "essa área";
-    return `✅ Tem opções EAD relacionadas a *${termo}* na Shekinah. Encontrei estas no catálogo atual:\n\n${linhas}\n\nDiga o nome ou número que eu mostro os detalhes. 📚`;
-  }
+  const consultaDisponibilidade = /^(tem|temos|voces tem|voce tem|ha|existe)|oferece|oferecem|procuro|busco|queria.*curso|quero.*curso/.test(t) || termosConsulta(texto).length > 0;
 
-  if (contextoEad && (consultaDisponibilidade || mencionaCurso)) {
-    if (EscolaAPI.configuracao().configurada && cache.fonte === "pagina_publica") {
-      return "⚠️ Não consegui confirmar esse curso pela API oficial agora. Prefiro não dizer que não existe. Posso tentar novamente ou mostrar o catálogo EAD disponível. 😊";
+  if (consultaDisponibilidade) {
+    let achados = pesquisarCursos(cs, texto);
+
+    // Se não encontrou, força atualização para evitar resposta baseada em cache antigo.
+    if (!achados.length && EscolaAPI.configuracao().configurada) {
+      try {
+        cs = cursosAtivos(await listar(true));
+        achados = pesquisarCursos(cs, texto);
+      } catch (_) {}
     }
-    return "🔎 Não encontrei esse termo exatamente no catálogo EAD carregado agora. Isso não significa automaticamente que a Shekinah não tenha uma opção relacionada. Diga a área ou um nome parecido que eu procuro no catálogo para você. 😊";
+
+    if (achados.length) {
+      sessao.eadUltimaLista = achados;
+      sessao.eadPagina = 0;
+      if (achados.length === 1) {
+        sessao.eadCursoAtual = achados[0].nome;
+        return detalhesCurso(achados[0]);
+      }
+      const top = achados.slice(0, 12);
+      const linhas = top.map((c, i) => `${i + 1}. ${c.nome}`).join("\n");
+      const termo = termosConsulta(texto)[0] || "essa área";
+      return `✅ Encontrei opções EAD relacionadas a *${termo}* na Shekinah:\n\n${linhas}\n\nDiga o nome ou número do curso para ver os detalhes. 📚`;
+    }
+
+    const termo = termosConsulta(texto)[0] || "esse curso";
+    return `🔎 Procurei *${termo}* no catálogo EAD atual da Shekinah e não encontrei um curso correspondente. Posso listar o catálogo completo para você conferir.`;
   }
 
   return null;
@@ -312,6 +385,5 @@ module.exports = {
   buscar,
   responder,
   URL,
-  apiConfigurada: () => EscolaAPI.configuracao().configurada,
-  fonteAtual: () => cache.fonte
+  apiConfigurada: () => EscolaAPI.configuracao().configurada
 };
