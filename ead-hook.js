@@ -5,12 +5,15 @@ function norm(s=""){return String(s).toLowerCase().normalize("NFD").replace(/[\u
 async function tentarEad(args){
  const {client,msg,textoOriginal,sessao,responder}=args||{}; if(!textoOriginal||!sessao||typeof responder!=="function")return false;
  const t=norm(textoOriginal);
- const contexto=sessao.instituicao==="shekinah"||/shekinah|curso ead|cursos ead|ead/.test(t);
+ const contexto=sessao.instituicao==="shekinah"||sessao.assuntoAtual==="shekinah_ead"||sessao.modalidadeShekinah==="ead"||/shekinah|curso ead|cursos ead|ead|online/.test(t);
  if(!contexto)return false;
  try{
-   const resposta=await EAD.responder(textoOriginal);
+   const resposta=await EAD.responder(textoOriginal,sessao);
    if(!resposta)return false;
-   sessao.instituicao="shekinah"; sessao.assuntoAtual="shekinah_ead";
+   sessao.instituicao="shekinah";
+   sessao.assuntoAtual="shekinah_ead";
+   sessao.modalidadeShekinah="ead";
+   sessao.cursoAtual=null;
    await responder(client,msg.from,resposta); return true;
  }catch(e){console.warn("⚠️ Catálogo EAD Shekinah:",e?.message||e); return false;}
 }
