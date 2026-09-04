@@ -81,12 +81,16 @@ substituirObrigatorio(
       // Atendimento humano em andamento: o Light fica totalmente silencioso para não interromper Carlos/secretaria.
       return;
     }
+    if (/^(quem (te )?(criou|fez|desenvolveu|programou)|quem criou voce|quem criou o light|quem fez voce|quem fez o light|quem desenvolveu voce|quem desenvolveu o light|quem programou voce|quem programou o light|qual o nome do seu criador|quem e seu criador)$/i.test(texto)) {
+      await responder(client,msg.from,"🤖 Fui criado por *Carlos Olímpio*. 😊");
+      return;
+    }
     if (/^(qual (e )?seu nome|qual o seu nome|como voce se chama|quem e voce|quem voce e|seu nome|nome)$/i.test(texto)) {
-      await responder(client,msg.from,"🤖 Eu sou o *Light*, assistente virtual da *UniFatecie Polo Barreirinha* e do *Centro Educacional Shekinah*. Fui criado por *Carlos Olímpio*. 😊");
+      await responder(client,msg.from,"🤖 Eu sou o *Light*, assistente virtual da *UniFatecie Polo Barreirinha* e do *Centro Educacional Shekinah*. 😊");
       return;
     }
     if (/^(oi+|ola+|opa+|alo+|ei+|e ai|hey+|hello|salve|bom dia|boa tarde|boa noite)$/i.test(texto)) {
-      await responder(client,msg.from,"🤖 Olá! Eu sou o *Light*, assistente da *UniFatecie Polo Barreirinha* e da *Shekinah*. Fui criado por *Carlos Olímpio*. 😊 Como posso ajudar?");
+      await responder(client,msg.from,"🤖 Olá! Eu sou o *Light*, assistente da *UniFatecie Polo Barreirinha* e da *Shekinah*. 😊 Como posso ajudar?");
       return;
     }
     if (!mensagemEraAudio) {
