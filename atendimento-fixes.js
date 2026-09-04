@@ -60,6 +60,19 @@ function perguntaRedesSociaisShekinah(texto = "", sessao) {
   return perguntouRede && contextoShekinah;
 }
 
+function perguntaModalidadeUnifatecie(texto = "", sessao) {
+  const t = normalizar(texto);
+  const perguntouModalidade =
+    /\b(aula|aulas|online|ead|presencial|presenciais|portal|plataforma|estudar de casa|estuda de casa)\b/.test(t) &&
+    /\b(online|ead|presencial|presenciais|portal|plataforma|casa)\b/.test(t);
+
+  const contextoUnifatecie =
+    /\b(unifatecie|fatecie|faculdade|pedagogia|administracao|ads|analise e desenvolvimento de sistemas|gestao financeira|gestao de recursos humanos|logistica|processos gerenciais|sistemas para internet|design de moda)\b/.test(t) ||
+    sessao?.instituicao === "unifatecie";
+
+  return perguntouModalidade && contextoUnifatecie;
+}
+
 function querMatriculaShekinah(texto = "", sessao, cursos = []) {
   const t = normalizar(texto);
   const mencionaMatricula = /\b(quero fazer|quero estudar|quero me matricular|quero matricular|fazer o curso|fazer os cursos|matricula|matricular)\b/.test(t);
@@ -133,6 +146,16 @@ async function tentarCorrecoesAtendimento({
       client,
       msg.from,
       "✅ Atendimento anterior cancelado. 😊\n\nPode falar comigo normalmente sobre 🎓 cursos, 📝 matrícula, 💳 financeiro ou 👩‍💼 secretaria."
+    );
+    return true;
+  }
+
+  if (perguntaModalidadeUnifatecie(textoOriginal, sessao)) {
+    sessao.instituicao = "unifatecie";
+    await responder(
+      client,
+      msg.from,
+      "💻 Sim. As aulas são *100% online* e o aluno acessa tudo pelo *portal da UniFatecie*. ✅"
     );
     return true;
   }
