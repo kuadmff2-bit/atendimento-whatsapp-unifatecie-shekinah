@@ -5,15 +5,13 @@ function montarMensagemPreMatriculaShekinah(sessao) {
     "🆕 *NOVA PRÉ-MATRÍCULA — SHEKINAH*\n\n" +
     `📚 Curso(s): ${d.curso || sessao?.curso || "Não informado"}\n` +
     `👤 Nome completo: ${d.nome || "Não informado"}\n` +
-    `📅 Data de nascimento: ${d.nascimento || "Não informado"}\n` +
     `🪪 CPF: ${d.cpf || "Não informado"}\n` +
-    `🪪 RG ou CIN: ${d.rg || "Não informado"}\n` +
-    `📱 Telefone principal: ${d.telefone || "Não informado"}\n` +
-    `☎️ Segundo telefone: ${d.telefone2 || "Não informado"}\n` +
-    `🏠 Endereço completo: ${d.endereco || "Não informado"}\n` +
+    `📱 Telefone/WhatsApp: ${d.telefone || "Não informado"}\n` +
+    `✉️ E-mail: ${d.email || "Não informado"}\n` +
+    `📅 Data de nascimento: ${d.nascimento || "Não informado"}\n` +
     `🧒 Aluno menor de 18 anos: ${sessao?.menorDeIdade ? "Sim" : "Não"}\n` +
     (sessao?.menorDeIdade
-      ? `👨 CPF do pai: ${d.cpfPai || "Não informado"}\n👩 CPF da mãe: ${d.cpfMae || "Não informado"}\n`
+      ? `👨‍👩‍👧 CPF de um responsável: ${d.cpfResponsavel || "Não informado"}\n`
       : "") +
     "\n✅ Pré-matrícula preenchida pelo bot. A secretaria pode continuar o atendimento com o aluno."
   );
