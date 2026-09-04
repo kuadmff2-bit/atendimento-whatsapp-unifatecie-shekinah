@@ -22,6 +22,13 @@ async function tentarCorrecoesAtendimento({client,msg,textoOriginal,sessao,respo
  if(await tentarComandoAdminComMapeamento({client,msg,textoOriginal,responder}))return true;
  const t=normalizar(textoOriginal), cursosShekinah=cursosShekinahNoTexto(textoOriginal);
 
+ // Encerrar atendimento deve realmente zerar assunto, curso e instituição anteriores.
+ if(/^(encerrar|encerrar atendimento|finalizar atendimento|fim|sair do atendimento)$/.test(t)){
+   resetarSessao(sessao);
+   await responder(client,msg.from,"✅ Atendimento encerrado. Se precisar de algo depois, é só chamar. 😊");
+   return true;
+ }
+
  // Cancelar matrícula acadêmica NÃO é cancelar a conversa do bot.
  if(pedidoCancelamentoMatricula(textoOriginal,sessao)){
    sessao.instituicao="unifatecie";
