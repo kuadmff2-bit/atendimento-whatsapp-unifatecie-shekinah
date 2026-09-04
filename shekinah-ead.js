@@ -44,7 +44,7 @@ function extrair(html) {
 }
 
 async function listarPaginaPublica() {
-  const r = await fetch(URL, { headers: { "user-agent": "Mozilla/5.0 Light-Shekinah/3.1" } });
+  const r = await fetch(URL, { headers: { "user-agent": "Mozilla/5.0 Light-Shekinah/3.2" } });
   if (!r.ok) throw new Error(`Catálogo EAD HTTP ${r.status}`);
   const cursos = extrair(await r.text());
   if (!cursos.length) throw new Error("Catálogo EAD vazio");
@@ -159,7 +159,8 @@ const STOP = new Set([
 ]);
 
 const ALIASES = {
-  informatica: ["informatica", "tecnologia", "computador", "computadores", "windows", "office", "excel", "word", "powerpoint", "access", "programacao", "software", "canva", "autocad", "photoshop", "corel", "app", "game"],
+  informatica: ["informatica", "tecnologia", "computador", "computadores", "windows", "office", "excel", "word", "powerpoint", "access", "programacao", "software", "canva", "autocad", "photoshop", "corel", "app"],
+  jogos: ["jogo", "jogos", "game", "games", "desenvolver", "desenvolvimento", "criar", "criacao", "programar", "gamedev"],
   culinaria: ["culinaria", "culinario", "gastronomia", "confeitaria", "doces", "salgados", "panificacao", "padeiro", "bolo", "bolos", "pizzaiolo", "barista", "alimentos", "cozinheiro"],
   administracao: ["administracao", "administrativo", "gestao", "rh", "recursos humanos", "departamento pessoal", "secretariado"],
   vendas: ["vendas", "marketing", "telemarketing", "instagram", "midias sociais", "ecommerce", "loja virtual"]
@@ -226,7 +227,6 @@ function pesquisarCursos(cs, texto) {
 function cursoMencionadoNaMensagem(cs, texto) {
   const t = norm(texto);
 
-  // Melhor caso: a mensagem contém o nome completo cadastrado do curso.
   const completos = cs
     .filter(c => {
       const n = norm(c.nome);
@@ -238,8 +238,6 @@ function cursoMencionadoNaMensagem(cs, texto) {
   const termos = termosConsulta(texto);
   if (!termos.length) return null;
 
-  // Se todos os termos úteis da pergunta aparecem no nome de um único curso,
-  // é uma referência explícita ao curso, mesmo com pontuação ou ordem diferente.
   const todosNoNome = cs.filter(c => {
     const nome = norm(c.nome);
     return termos.every(termo => nome.includes(termo));
@@ -249,8 +247,6 @@ function cursoMencionadoNaMensagem(cs, texto) {
     return todosNoNome.sort((a, b) => norm(a.nome).length - norm(b.nome).length)[0];
   }
 
-  // Para pequenas variações de escrita, só assume o primeiro resultado quando
-  // ele tem vantagem clara sobre o segundo. Isso evita trocar de curso por engano.
   const ranqueados = pesquisarCursosComScore(cs, texto);
   if (!ranqueados.length) return null;
   const primeiro = ranqueados[0];
@@ -259,8 +255,22 @@ function cursoMencionadoNaMensagem(cs, texto) {
   return null;
 }
 
+function cursoDeJogos(cs) {
+  return cs.find(c => /criacao de game profissional|criacao de jogos|desenvolvimento de jogos|game profissional/.test(norm(c.nome))) || null;
+}
+
+function ehPerguntaSobreJogos(t) {
+  return /\b(jogo|jogos|game|games|gamedev)\b/.test(t) ||
+    /(desenvolv|criar|criacao|programar).*(jogo|game)/.test(t) ||
+    /(jogo|game).*(desenvolv|criar|criacao|programar)/.test(t);
+}
+
 async function buscar(texto) {
   const cs = cursosAtivos(await listar());
+  if (ehPerguntaSobreJogos(norm(texto))) {
+    const game = cursoDeJogos(cs);
+    if (game) return [game];
+  }
   return pesquisarCursos(cs, texto).slice(0, 12);
 }
 
@@ -338,10 +348,25 @@ async function responder(texto, sessao = {}) {
 
   let cs = cursosAtivos(await listar());
   let atual = cursoAtualDaSessao(cs, sessao);
+
+  if (ehPerguntaSobreJogos(t)) {
+    let game = cursoDeJogos(cs);
+    if (!game && EscolaAPI.configuracao().configurada) {
+      try {
+        cs = cursosAtivos(await listar(true));
+        game = cursoDeJogos(cs);
+      } catch (_) {}
+    }
+    if (game) {
+      sessao.eadCursoAtual = game.nome;
+      sessao.eadUltimaLista = [game];
+      sessao.eadPagina = 0;
+      return `🎮 Sim! A Shekinah tem o curso EAD *${game.nome}*.\n\n${detalhesCurso(game)}`;
+    }
+  }
+
   let mencionado = cursoMencionadoNaMensagem(cs, texto);
 
-  // Se a própria mensagem cita um curso, esse curso tem prioridade sobre o
-  // contexto anterior. Ex.: “Lógica de Programação, quanto custa?”.
   if (mencionado) {
     sessao.eadCursoAtual = mencionado.nome;
     atual = mencionado;
@@ -350,8 +375,6 @@ async function responder(texto, sessao = {}) {
   if (ehPerguntaValor(t)) {
     if (mencionado || (atual && !termosConsulta(texto).length)) return respostaValor(mencionado || atual);
 
-    // A pessoa escreveu um nome/termo de curso junto com a pergunta de preço,
-    // mas não houve correspondência segura. Não pergunta genericamente “de qual curso?”.
     const termos = termosConsulta(texto);
     if (termos.length) {
       let achados = pesquisarCursos(cs, texto);
