@@ -76,6 +76,19 @@ substituirObrigatorio(
 substituirObrigatorio(
   '    const texto = limparTexto(textoOriginal);\n    let secretariaIdentificada = false;',
   `    const texto = limparTexto(textoOriginal);
+    const comandoRetomarBot = /^(m|menu|menu principal|voltar ao menu|inicio|retomar bot|voltar pro light|voltar para o light)$/i.test(texto);
+    if ((sessao.atendimentoHumano || sessao.etapa === "atendimento_humano") && !comandoRetomarBot) {
+      // Atendimento humano em andamento: o Light fica totalmente silencioso para não interromper Carlos/secretaria.
+      return;
+    }
+    if (/^(qual (e )?seu nome|qual o seu nome|como voce se chama|quem e voce|quem voce e|seu nome|nome)$/i.test(texto)) {
+      await responder(client,msg.from,"🤖 Eu sou o *Light*, assistente virtual da *UniFatecie Polo Barreirinha* e do *Centro Educacional Shekinah*. Fui criado por *Carlos Olímpio*. 😊");
+      return;
+    }
+    if (/^(oi+|ola+|opa+|alo+|ei+|e ai|hey+|hello|salve|bom dia|boa tarde|boa noite)$/i.test(texto)) {
+      await responder(client,msg.from,"🤖 Olá! Eu sou o *Light*, assistente da *UniFatecie Polo Barreirinha* e da *Shekinah*. Fui criado por *Carlos Olímpio*. 😊 Como posso ajudar?");
+      return;
+    }
     if (!mensagemEraAudio) {
       const perguntouSobreAudio = /^(voce entendeu meu audio|entendeu meu audio|o que eu falei|oque eu falei|o que falei|qual foi meu audio|o que tinha no audio|o que eu disse no audio|repete meu audio)$/i.test(texto);
       if (perguntouSobreAudio) { const t=String(sessao.ultimaTranscricaoAudio||"").trim(); await responder(client,msg.from,t ? \`🎤 Sim. A última coisa que entendi do seu áudio foi:\\n\\n“\${t}”\` : "🎤 Não tenho uma transcrição de áudio salva nesta conversa. Se o áudio anterior falhou, pode enviar novamente. 😊"); return; }
@@ -83,7 +96,7 @@ substituirObrigatorio(
     const corrigidoAntesDoFluxo = await tentarCorrecoesAtendimento({client,msg,textoOriginal,texto,sessao,responder}); if (corrigidoAntesDoFluxo) return;
     const tratadoNaturalmente = await tentarConversaNatural({client,msg,textoOriginal,texto,sessao,cursosUnifatecie:CURSOS_UNIFATECIE,config:CONFIG,responder,tentarResponderComIA,iaDisponivel}); if (tratadoNaturalmente) return;
     let secretariaIdentificada = false;`,
-  "interceptadores naturais"
+  "interceptadores naturais, pausa humana e apresentação"
 );
 
 substituirObrigatorio('  } catch (error) {\n    console.error("❌ Erro no processamento da mensagem:", error);\n  }\n}','  } catch (error) {\n    registrarErro(error, "processarMensagem");\n    console.error("❌ Erro no processamento da mensagem:", error);\n  }\n}',"registro de erros");
