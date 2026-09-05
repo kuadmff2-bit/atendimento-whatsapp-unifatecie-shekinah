@@ -22,10 +22,18 @@ function ehPerguntaDeAcesso(t = "") {
   return /\b(quando libera|libera o acesso|liberar acesso|acesso liberado|quando posso acessar|quando comeca|quando começo|apos pagamento|depois do pagamento)\b/.test(t);
 }
 
+function ehPerguntaDeCertificado(t = "") {
+  return /\b(certificado|certificacao|certifica|certificado digital|tem certificado|recebo certificado|ganho certificado|como pego o certificado|quando libera o certificado)\b/.test(t);
+}
+
 function regraAcesso() {
   return `🔓 *Liberação do acesso:* o curso é liberado somente após a confirmação do pagamento.\n` +
     `• Pagamento à vista: após o pagamento dos *${OFERTA_EAD.avista}*.\n` +
     `• Pagamento parcelado: após o pagamento da *1ª parcela de ${OFERTA_EAD.parcela}*.`;
+}
+
+function regraCertificado() {
+  return `🎓 *Certificado:* sim. Ele é liberado *automaticamente ao final do curso*, após a conclusão do curso na plataforma.`;
 }
 
 function ofertaCompleta() {
@@ -90,6 +98,15 @@ async function tentarEad(args) {
       sessao.modalidadeShekinah = "ead";
       sessao.cursoAtual = null;
       await responder(client, msg.from, regraAcesso());
+      return true;
+    }
+
+    if (ehPerguntaDeCertificado(t)) {
+      sessao.instituicao = "shekinah";
+      sessao.assuntoAtual = "shekinah_ead";
+      sessao.modalidadeShekinah = "ead";
+      sessao.cursoAtual = null;
+      await responder(client, msg.from, regraCertificado());
       return true;
     }
 
