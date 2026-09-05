@@ -12,6 +12,11 @@ function norm(texto = "") {
     .trim();
 }
 
+function minutosInatividadeHumana() {
+  const valor = Number(process.env.HUMAN_HANDOFF_IDLE_MINUTES || 30);
+  return Number.isFinite(valor) && valor >= 5 ? Math.round(valor) : 30;
+}
+
 function pediuHumanoUniFatecie(texto = "", sessao = {}) {
   const t = norm(texto);
   if (!t) return false;
@@ -59,6 +64,7 @@ async function notificarAdmin(client, msg, textoOriginal) {
   const destino = destinoAdmin();
   if (!destino || typeof client?.sendText !== "function") return false;
 
+  const minutos = minutosInatividadeHumana();
   const aviso = [
     "🔔 *ATENDIMENTO HUMANO — UNIFATECIE*",
     "",
@@ -67,7 +73,8 @@ async function notificarAdmin(client, msg, textoOriginal) {
     `💬 Pedido: ${String(textoOriginal || "").trim().slice(0, 500)}`,
     "",
     "O Light foi pausado nesta conversa. Responda manualmente pelo WhatsApp do atendimento.",
-    "Para reativar o robô, o aluno pode enviar *m*, *menu* ou *retomar bot*.",
+    `Se a conversa ficar *${minutos} minutos sem receber novas mensagens*, o Light volta automaticamente no próximo contato.`,
+    "Também é possível reativar antes com *m*, *menu* ou *retomar bot*.",
   ].join("\n");
 
   try {
@@ -99,11 +106,15 @@ Module._load = function (request, parent, isMain) {
         typeof responder === "function" &&
         pediuHumanoUniFatecie(textoOriginal, sessao)
       ) {
+        const agora = Date.now();
+        const minutos = minutosInatividadeHumana();
         sessao.instituicao = "unifatecie";
         sessao.atendimentoHumano = true;
         sessao.etapa = "atendimento_humano";
         sessao.assuntoAtual = "atendimento_humano_solicitado";
-        sessao.atualizadoEm = Date.now();
+        sessao.pausaHumanaIniciadaEm = agora;
+        sessao.ultimaMensagemHumanoEm = agora;
+        sessao.atualizadoEm = agora;
 
         const notificou = await notificarAdmin(client, msg, textoOriginal);
 
@@ -111,8 +122,8 @@ Module._load = function (request, parent, isMain) {
           client,
           msg.from,
           notificou
-            ? "👨‍💼 Certo. *Avisei o secretário da UniFatecie* e pausei o Light nesta conversa. A partir de agora, o robô fica em silêncio para o secretário responder você diretamente."
-            : "👨‍💼 Certo. Pausei o Light nesta conversa para o secretário assumir o atendimento."
+            ? `👨‍💼 Certo. *Avisei o secretário da UniFatecie* e pausei o Light nesta conversa. O robô fica em silêncio enquanto vocês conversam e volta automaticamente depois de *${minutos} minutos sem novas mensagens*.`
+            : `👨‍💼 Certo. Pausei o Light para o secretário assumir. Ele volta automaticamente depois de *${minutos} minutos sem novas mensagens*.`
         );
         return true;
       }
@@ -126,4 +137,4 @@ Module._load = function (request, parent, isMain) {
   return exp;
 };
 
-module.exports = { pediuHumanoUniFatecie, notificarAdmin };
+module.exports = { pediuHumanoUniFatecie, notificarAdmin, minutosInatividadeHumana };
