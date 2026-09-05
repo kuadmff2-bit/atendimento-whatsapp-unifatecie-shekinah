@@ -8,10 +8,13 @@ function norm(s = "") {
     .trim();
 }
 
+// Palavras que expressam intenção/conversa, mas não dizem QUAL curso/área a pessoa procura.
+// Elas não devem virar termo de busca no catálogo.
 const STOP = new Set([
-  "tem","curso","cursos","de","da","do","das","dos","um","uma","uns","umas","o","a","os","as","e","ou","pra","para","por","com",
-  "eu","me","meu","minha","quero","queria","gostaria","preciso","saber","ver","mostra","mostrar","mostre","mostreme","opcao","opcoes",
-  "ead","online","shekinah","voces","voce","oferece","oferecem","algum","alguma","algo","area","nessa","nesta","isso","issoai","ai"
+  "tem","tenho","ter","curso","cursos","de","da","do","das","dos","um","uma","uns","umas","o","a","os","as","e","ou","pra","para","por","com","sobre",
+  "eu","me","meu","minha","quero","queria","gostaria","preciso","saber","ver","conhecer","mostra","mostrar","mostre","mostreme","fala","falar","diz","dizer",
+  "opcao","opcoes","lista","listar","catalogo","informacao","informacoes","detalhe","detalhes","disponivel","disponiveis","oferta","ofertas",
+  "qual","quais","que","ead","online","shekinah","voces","voce","oferece","oferecem","algum","alguma","algo","area","nessa","nesta","isso","issoai","ai"
 ]);
 
 const CONCEITOS = [
@@ -163,10 +166,21 @@ function recomendar(cursos = [], texto = "", limite = 8) {
     .slice(0, limite);
 }
 
+function mencionaCatalogoOuCursos(t) {
+  return /\b(curso|cursos|opcao|opcoes|catalogo|lista)\b/.test(t);
+}
+
 function ehPedidoCatalogo(texto = "") {
   const t = norm(texto);
-  return /^(opcoes|as opcoes|quais opcoes|mostra as opcoes|me mostra as opcoes|mostre as opcoes|mostra os cursos|me mostra os cursos|quais cursos|lista os cursos|listar cursos|catalogo|ver catalogo|quero ver os cursos)$/.test(t)
-    || /\b(mostra|mostrar|mostre|ver|quais|lista|listar)\b.*\b(opcoes|cursos|catalogo)\b/.test(t)
+  if (!t) return false;
+
+  // Se a pessoa falou de cursos/opções/catálogo mas NÃO informou uma área ou curso específico,
+  // a intenção é navegar pelo catálogo. Ex.: “quero saber dos cursos”, “me mostra as opções”.
+  if (mencionaCatalogoOuCursos(t) && tokens(t).length === 0) return true;
+
+  return /^(opcoes|as opcoes|cursos|os cursos|catalogo|lista de cursos)$/.test(t)
+    || /\b(mostra|mostrar|mostre|ver|quais|lista|listar|saber|conhecer|fala|falar|informacao|informacoes)\b.*\b(opcoes|cursos|catalogo|lista)\b/.test(t)
+    || /\b(que|quais) cursos? (voces|voce)? ?(tem|oferece|oferecem)?\b/.test(t)
     || /\b(o que|oque) (voces|voce) (tem|oferece)\b/.test(t);
 }
 
@@ -182,7 +196,14 @@ function emFluxoObrigatorio(sessao = {}) {
 
 function parecePedidoPorObjetivo(texto = "") {
   const t = norm(texto);
+
+  // Pedido genérico de catálogo não é recomendação por objetivo.
+  if (ehPedidoCatalogo(t)) return false;
   if (detectarConceitos(t).length) return true;
+
+  // Só tenta recomendar quando sobrou algum termo realmente específico.
+  if (!tokens(t).length) return false;
+
   return /\b(curso|cursos|aprender|trabalhar|mexer|fazer|criar|desenvolver|programar|editar|consertar|montar)\b/.test(t)
     && /\b(pra|para|quero|queria|gostaria|aprender|trabalhar|criar|desenvolver|programar|editar|consertar|montar)\b/.test(t);
 }
@@ -203,6 +224,7 @@ function respostaPareceFalhaDeBusca(resposta = "") {
 
 module.exports = {
   norm,
+  tokens,
   recomendar,
   ehPedidoCatalogo,
   ehPedidoMatricula,
