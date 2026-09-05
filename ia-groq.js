@@ -9,6 +9,9 @@ function contemDadoSensivel(texto = "") {
   const valor = String(texto);
   return /\b[^\s@]+@[^\s@]+\.[^\s@]+\b/i.test(valor) || /\d(?:[\s.()\-/]*\d){7,}/.test(valor) || /\b(senha|codigo de acesso|c[oó]digo sms|cvv|cart[aã]o|token)\b/i.test(valor);
 }
+function normalizarNome(s = "") {
+  return String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+}
 function baseConhecimento(cursosUnifatecie, config) {
   const cursosFatecie = Object.values(cursosUnifatecie || {}).map((curso) => `- ${curso.nome}: ${curso.formacao}, duração ${curso.duracao}, mensalidade ${curso.mensalidade}, ${curso.estagio}.`).join("\n");
   return `\nBASE LOCAL OFICIAL DO ATENDIMENTO\n\nUNIFATECIE — POLO BARREIRINHA\n${cursosFatecie}\n\nSHEKINAH\n${config?.shekinah?.cursos || "Informações não cadastradas."}\n`;
@@ -32,6 +35,61 @@ async function chamarGroq(mensagens) { return requisitarGroq({ model: process.en
 async function chamarGroqComWeb({ texto, cursosUnifatecie, config, sessao }) { return requisitarGroq({ model: process.env.GROQ_WEB_MODEL || MODELO_WEB, messages: [{ role: "system", content: promptWeb(cursosUnifatecie, config, sessao) }, { role: "user", content: texto }], temperature: 0.1, max_completion_tokens: 650, tools: [{ type: "browser_search" }], tool_choice: "required" }, 18000); }
 function pareceSemInformacao(resposta = "") { const r = String(resposta).toLowerCase(); return ["não temos","nao temos","não encontrei","nao encontrei","não está na base","nao esta na base","não consta na base","nao consta na base","não tenho informação","nao tenho informacao","precisa ser confirmado","precisa confirmar"].some((x) => r.includes(x)); }
 function perguntaPodePrecisarDeWeb(texto = "") { const t = String(texto).toLowerCase(); return /\b(atual|atualmente|hoje|agora|novidade|site|oferece|ofertado|ofertada|existe|tem o curso|tem curso|administração|administracao|engenharia|contábeis|contabeis|direito|marketing|serviço social|servico social|teologia|economia)\b/.test(t); }
+
+async function interpretarCursosCatalogo({ texto, catalogo }) {
+  if (!iaDisponivel()) return [];
+  const pergunta = String(texto || "").trim();
+  if (!pergunta || pergunta.length > 500 || contemDadoSensivel(pergunta)) return [];
+
+  const nomes = (catalogo || [])
+    .map(c => typeof c === "string" ? c : c?.nome)
+    .filter(Boolean)
+    .slice(0, 180);
+  if (!nomes.length) return [];
+
+  const mapa = new Map(nomes.map(n => [normalizarNome(n), n]));
+  const prompt = [
+    "Você interpreta o que uma pessoa quer aprender e escolhe cursos SOMENTE de um catálogo fechado.",
+    "Retorne APENAS um JSON array com de 0 a 5 nomes EXATOS copiados do catálogo.",
+    "Não explique, não invente curso e não altere o nome.",
+    "Escolha primeiro o curso mais diretamente ligado ao objetivo e depois complementares úteis.",
+    "Se não houver relação razoável, retorne [].",
+    "",
+    `Pedido: ${pergunta}`,
+    "",
+    "CATÁLOGO:",
+    ...nomes.map(n => `- ${n}`)
+  ].join("\n");
+
+  const bruto = await requisitarGroq({
+    model: process.env.GROQ_MODEL || MODELO_PADRAO,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0,
+    max_tokens: 180
+  }, 9000);
+  if (!bruto) return [];
+
+  try {
+    const trecho = bruto.match(/\[[\s\S]*\]/)?.[0];
+    if (!trecho) return [];
+    const arr = JSON.parse(trecho);
+    if (!Array.isArray(arr)) return [];
+    const saida = [];
+    const vistos = new Set();
+    for (const item of arr) {
+      const original = mapa.get(normalizarNome(item));
+      if (original && !vistos.has(original)) {
+        vistos.add(original);
+        saida.push(original);
+      }
+      if (saida.length >= 5) break;
+    }
+    return saida;
+  } catch (_) {
+    return [];
+  }
+}
+
 async function tentarResponderComIA({ textoOriginal, sessao, cursosUnifatecie, config }) {
   if (!iaDisponivel()) return null;
   const texto = String(textoOriginal || "").trim(); if (!texto || texto.length > 700) return null;
@@ -44,4 +102,4 @@ async function tentarResponderComIA({ textoOriginal, sessao, cursosUnifatecie, c
   if (sessao) sessao.historicoIA = [...historico, { role: "user", content: texto }, { role: "assistant", content: resposta }].slice(-LIMITE_HISTORICO);
   return resposta;
 }
-module.exports = { iaDisponivel, tentarResponderComIA };
+module.exports = { iaDisponivel, tentarResponderComIA, interpretarCursosCatalogo };
