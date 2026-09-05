@@ -5,8 +5,8 @@
   "description": "Atendimento automático via WhatsApp para UniFatecie e Centro Educacional Shekinah.",
   "main": "index.js",
   "scripts": {
-    "start": "node -r ./flow-cancel-guard.js -r ./ead-matricula-routing.js -r ./ead-hook.js -r ./institution-router.js index.js",
-    "check": "node --check index.js && node --check legacy-index.js && node --check ia-groq.js && node --check ia-groq-ext.js && node --check audio-groq.js && node --check autonomia.js && node --check conversation-core.js && node --check conversation-core-ext.js && node --check atendimento-fixes.js && node --check shekinah-info.js && node --check shekinah-forward.js && node --check escola-avancada-api.js && node --check shekinah-ead.js && node --check ead-inteligencia.js && node --check flow-cancel-guard.js && node --check ead-matricula-routing.js && node --check ead-hook.js && node --check institution-router.js && node smoke-inteligencia.js"
+    "start": "node -r ./flow-cancel-guard.js -r ./ead-matricula-routing.js -r ./ead-hook.js -r ./institution-router.js -r ./structured-flow-guard.js index.js",
+    "check": "node --check index.js && node --check legacy-index.js && node --check ia-groq.js && node --check ia-groq-ext.js && node --check audio-groq.js && node --check autonomia.js && node --check conversation-core.js && node --check conversation-core-ext.js && node --check atendimento-fixes.js && node --check shekinah-info.js && node --check shekinah-forward.js && node --check escola-avancada-api.js && node --check shekinah-ead.js && node --check ead-inteligencia.js && node --check flow-cancel-guard.js && node --check ead-matricula-routing.js && node --check ead-hook.js && node --check institution-router.js && node --check structured-flow-guard.js && node smoke-inteligencia.js"
   },
   "engines": { "node": ">=18.0.0" },
   "dependencies": {
