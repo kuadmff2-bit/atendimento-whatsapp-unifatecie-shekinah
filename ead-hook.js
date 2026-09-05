@@ -1,6 +1,8 @@
 const Module = require("module");
 const originalLoad = Module._load;
 const EAD = require("./shekinah-ead");
+const Inteligencia = require("./ead-inteligencia");
+const IA = require("./ia-groq");
 
 const OFERTA_EAD = Object.freeze({
   avista: "R$ 300,00",
@@ -11,7 +13,7 @@ const OFERTA_EAD = Object.freeze({
 });
 
 function norm(s = "") {
-  return String(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return Inteligencia.norm(s);
 }
 
 function ehPerguntaDeValor(t = "") {
@@ -23,7 +25,7 @@ function ehPerguntaDeAcesso(t = "") {
 }
 
 function ehPerguntaDeCertificado(t = "") {
-  return /\b(certificado|certificacao|certifica|certificado digital|tem certificado|recebo certificado|ganho certificado|como pego o certificado|quando libera o certificado)\b/.test(t);
+  return /\b(certificado|certificacao|certifica|certificado digital|tem certificado|recebo certificado|ganho certificado|como pego o certificado|como recebo o certificado|quando libera o certificado)\b/.test(t);
 }
 
 function regraAcesso() {
@@ -57,7 +59,6 @@ function aplicarOfertaComercial(resposta = "") {
   let texto = String(resposta || "");
   const tinhaValorApi = /💰\s*\*Valor:\*\s*R\$/i.test(texto) || /valor cadastrado na plataforma/i.test(texto);
 
-  // Os preços individuais cadastrados na plataforma não são usados na oferta comercial atual.
   texto = texto
     .replace(/\n?💰\s*\*Valor:\*\s*R\$[^\n]*/gi, "")
     .replace(/\n?💳\s*Parcelamento cadastrado:[^\n]*/gi, "")
@@ -69,6 +70,42 @@ function aplicarOfertaComercial(resposta = "") {
   return texto;
 }
 
+function marcarContexto(sessao) {
+  sessao.instituicao = "shekinah";
+  sessao.assuntoAtual = "shekinah_ead";
+  sessao.modalidadeShekinah = "ead";
+}
+
+function cursoCitadoExatamente(catalogo, texto) {
+  const t = norm(texto);
+  return (catalogo || []).some(c => {
+    const n = norm(c?.nome);
+    return n && t.includes(n);
+  });
+}
+
+async function responderRecomendacoes({ client, msg, sessao, catalogo, textoOriginal }) {
+  let recomendados = Inteligencia.recomendar(catalogo, textoOriginal, 8);
+
+  if (!recomendados.length && IA.iaDisponivel()) {
+    const nomes = await IA.interpretarCursosCatalogo({ texto: textoOriginal, catalogo });
+    if (nomes.length) {
+      const mapa = new Map(catalogo.map(c => [norm(c.nome), c]));
+      recomendados = nomes.map(n => mapa.get(norm(n))).filter(Boolean);
+    }
+  }
+
+  if (!recomendados.length) return false;
+
+  sessao.eadUltimaLista = recomendados;
+  sessao.eadPagina = 0;
+  if (recomendados.length === 1) sessao.eadCursoAtual = recomendados[0].nome;
+
+  marcarContexto(sessao);
+  await responder(client, msg.from, Inteligencia.respostaRecomendacoes(recomendados, textoOriginal));
+  return true;
+}
+
 async function tentarEad(args) {
   const { client, msg, textoOriginal, sessao, responder } = args || {};
   if (!textoOriginal || !sessao || typeof responder !== "function") return false;
@@ -77,48 +114,68 @@ async function tentarEad(args) {
   const eadExplicito = /\bead\b|online|curso\.eadaulas|cursos ead|curso ead/.test(t);
   const contextoEad = sessao.assuntoAtual === "shekinah_ead" || sessao.modalidadeShekinah === "ead" || eadExplicito;
 
-  // Não intercepta conversas apenas por serem da Shekinah; presencial e EAD ficam separados.
   if (!contextoEad) return false;
 
+  // O catálogo não deve sequestrar fluxos de matrícula, financeiro ou atendimento humano.
+  if (Inteligencia.emFluxoObrigatorio(sessao)) return false;
+  if (Inteligencia.ehPedidoMatricula(textoOriginal)) return false;
+
   try {
-    // Todos os cursos EAD têm a mesma regra comercial. Por isso perguntas de
-    // preço não precisam descobrir primeiro qual é o curso.
     if (ehPerguntaDeValor(t)) {
-      sessao.instituicao = "shekinah";
-      sessao.assuntoAtual = "shekinah_ead";
-      sessao.modalidadeShekinah = "ead";
-      sessao.cursoAtual = null;
+      marcarContexto(sessao);
       await responder(client, msg.from, ofertaCompleta());
       return true;
     }
 
     if (ehPerguntaDeAcesso(t)) {
-      sessao.instituicao = "shekinah";
-      sessao.assuntoAtual = "shekinah_ead";
-      sessao.modalidadeShekinah = "ead";
-      sessao.cursoAtual = null;
+      marcarContexto(sessao);
       await responder(client, msg.from, regraAcesso());
       return true;
     }
 
     if (ehPerguntaDeCertificado(t)) {
-      sessao.instituicao = "shekinah";
-      sessao.assuntoAtual = "shekinah_ead";
-      sessao.modalidadeShekinah = "ead";
-      sessao.cursoAtual = null;
+      marcarContexto(sessao);
       await responder(client, msg.from, regraCertificado());
       return true;
     }
 
+    let catalogo = null;
+    const obterCatalogo = async () => {
+      if (!catalogo) catalogo = await EAD.listar();
+      return catalogo;
+    };
+
+    // Entende objetivo em linguagem natural: “curso pra criar jogos”, “quero trabalhar com vídeo”, etc.
+    if (Inteligencia.parecePedidoPorObjetivo(textoOriginal)) {
+      const cs = await obterCatalogo();
+      if (!cursoCitadoExatamente(cs, textoOriginal)) {
+        if (await responderRecomendacoes({ client, msg, sessao, catalogo: cs, textoOriginal })) return true;
+      }
+    }
+
+    // Frases curtas como “me mostra as opções” agora significam mostrar o catálogo,
+    // e não procurar um curso chamado “opções”.
+    if (Inteligencia.ehPedidoCatalogo(textoOriginal)) {
+      const respostaCatalogo = await EAD.responder("listar cursos ead", sessao);
+      if (respostaCatalogo) {
+        marcarContexto(sessao);
+        await responder(client, msg.from, aplicarOfertaComercial(respostaCatalogo));
+        return true;
+      }
+    }
+
     let resposta = await EAD.responder(textoOriginal, sessao);
     if (!resposta) return false;
+
+    // Se a busca literal falhar, tenta sinônimos, objetivo, tolerância a erros de digitação
+    // e, por último, IA restrita aos nomes reais do catálogo. Nunca deixa a IA inventar curso.
+    if (Inteligencia.respostaPareceFalhaDeBusca(resposta)) {
+      const cs = await obterCatalogo();
+      if (await responderRecomendacoes({ client, msg, sessao, catalogo: cs, textoOriginal })) return true;
+    }
+
     resposta = aplicarOfertaComercial(resposta);
-
-    sessao.instituicao = "shekinah";
-    sessao.assuntoAtual = "shekinah_ead";
-    sessao.modalidadeShekinah = "ead";
-    sessao.cursoAtual = null;
-
+    marcarContexto(sessao);
     await responder(client, msg.from, resposta);
     return true;
   } catch (e) {
