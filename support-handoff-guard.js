@@ -11,11 +11,6 @@ function norm(texto = "") {
     .trim();
 }
 
-function minutosInatividadeHumana() {
-  const valor = Number(process.env.HUMAN_HANDOFF_IDLE_MINUTES || 30);
-  return Number.isFinite(valor) && valor >= 5 ? Math.round(valor) : 30;
-}
-
 function destinoAdmin() {
   const numero = String(process.env.BOT_ADMIN_PHONE || "").replace(/\D/g, "");
   return numero ? `${numero}@c.us` : "";
@@ -58,6 +53,8 @@ function resetarSuporte(sessao = {}) {
     assuntoAtual: null,
     acaoPendente: null,
     problemaSuporteOriginal: null,
+    identificacaoSuporteParcial: null,
+    dadosFinanceirosParciais: null,
     curso: "",
     cursoAtual: null,
     modalidadeShekinah: null,
@@ -75,27 +72,50 @@ function gruposNumericos(texto = "") {
   return String(texto || "").match(/\d[\d.\-\/\s,]{2,}\d/g) || [];
 }
 
-function pareceDadosFinanceiros(texto = "") {
+function camposFinanceiros(texto = "") {
   const bruto = String(texto || "").trim();
-  if (!bruto) return false;
-  const comprimentos = gruposNumericos(bruto).map(g => g.replace(/\D/g, "").length);
-  const temCpf = comprimentos.some(n => n === 11);
-  const temRa = comprimentos.some(n => n >= 5 && n <= 10);
+  const grupos = gruposNumericos(bruto).map(raw => ({ raw, digits: raw.replace(/\D/g, "") }));
+  const temCpf = grupos.some(g => g.digits.length === 11);
   const temValor = /\b\d{1,5}\s*[,.]\s*\d{2}\b/.test(bruto);
-  const t = norm(bruto);
-  const citouCampos = /\b(ra|cpf|valor|paguei|pagamento|mensalidade)\b/.test(t);
-  return temCpf || (temRa && temValor) || (temRa && citouCampos);
+  const temRaRotulado = /\bra\b\s*[:#-]?\s*\d{4,12}\b/i.test(bruto);
+  const temRaSolto = grupos.some(g => {
+    const n = g.digits.length;
+    const pareceDinheiro = /[,.]\s*\d{2}\s*$/.test(g.raw);
+    return n >= 5 && n <= 10 && !pareceDinheiro;
+  });
+  return { temCpf, temValor, temRa: temRaRotulado || temRaSolto };
+}
+
+function pareceDadosFinanceiros(texto = "") {
+  const c = camposFinanceiros(texto);
+  return c.temCpf && c.temValor && c.temRa;
+}
+
+function pedidoPagamentoNaoCompensado(texto = "") {
+  const t = norm(texto);
+  const falouPagamento = /\b(paguei|pago|pagamento|mensalidade|parcela|boleto)\b/.test(t);
+  const continuaAberto = /\b(ainda|continua|continuou|segue|aparece|consta)\b.*\b(abert|pendente|pagar|cobr|nao pago)/.test(t)
+    || /\b(abert|pendente|pagar|cobr)\w*\b.*\b(ainda|continua|aparece|consta)\b/.test(t);
+  const naoBaixou = /\b(nao|nunca)\b.*\b(baixou|compensou|reconheceu|constou)\b/.test(t)
+    || /\bpagamento\b.*\bnao compens/.test(t);
+  return falouPagamento && (continuaAberto || naoBaixou);
+}
+
+function temNomeProvavel(texto = "") {
+  const semNumeros = norm(texto)
+    .replace(/\b(cpf|ra|meu|meu nome|nome|nome completo|sou|me chamo)\b/g, " ")
+    .replace(/\d+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const palavras = semNumeros.split(" ").filter(p => /^[a-z]{2,}$/.test(p));
+  return palavras.length >= 2;
 }
 
 function pareceIdentificacaoAluno(texto = "") {
   const bruto = String(texto || "").trim();
   if (!bruto) return false;
-  const comprimentos = gruposNumericos(bruto).map(g => g.replace(/\D/g, "").length);
-  const temCpf = comprimentos.some(n => n === 11);
-  const temRa = comprimentos.some(n => n >= 5 && n <= 10);
-  const t = norm(bruto);
-  const informouNome = /\b(meu nome|nome completo|sou|me chamo)\b/.test(t) && t.length >= 8;
-  return temCpf || (temRa && informouNome);
+  const temCpf = gruposNumericos(bruto).some(g => g.replace(/\D/g, "").length === 11);
+  return temCpf && temNomeProvavel(bruto);
 }
 
 function problemaDeAcesso(texto = "") {
@@ -110,6 +130,14 @@ function removerSenhaDeclarada(texto = "") {
     .replace(/\b(minha senha e|minha senha é)\s+[^\s,;]+/gi, "minha senha: [REMOVIDA]");
 }
 
+function juntarParcial(anterior, atual) {
+  const a = String(anterior || "").trim();
+  const b = removerSenhaDeclarada(String(atual || "").trim());
+  if (!a) return b.slice(0, 1800);
+  if (!b) return a.slice(0, 1800);
+  return `${a}\n${b}`.slice(0, 1800);
+}
+
 async function notificarAtendente(client, msg, problema, informacoes, titulo = "SUPORTE — UNIFATECIE") {
   const destino = destinoAdmin();
   if (!destino || typeof client?.sendText !== "function") return false;
@@ -122,9 +150,9 @@ async function notificarAtendente(client, msg, problema, informacoes, titulo = "
     `⚠️ Problema: ${removerSenhaDeclarada(problema || "Problema no portal da UniFatecie").slice(0, 700)}`,
     "",
     "📋 *Informações enviadas pelo aluno:*",
-    removerSenhaDeclarada(informacoes || "").slice(0, 1200),
+    removerSenhaDeclarada(informacoes || "").slice(0, 1800),
     "",
-    "O Light pausou esta conversa para o atendente conferir e resolver manualmente."
+    "Assuma a conversa manualmente quando puder."
   ].join("\n");
 
   try {
@@ -150,13 +178,15 @@ function ativarAtendimentoHumano(sessao = {}, assunto = "atendimento_humano_supo
 async function concluirEncaminhamento({ client, msg, sessao, responder, problema, informacoes, titulo, assuntoHumano }) {
   const notificou = await notificarAtendente(client, msg, problema, informacoes, titulo);
   ativarAtendimentoHumano(sessao, assuntoHumano);
+  sessao.identificacaoSuporteParcial = null;
+  sessao.dadosFinanceirosParciais = null;
 
   await responder(
     client,
     msg.from,
     notificou
-      ? "✅ Recebi suas informações e já passei tudo para o atendente da UniFatecie. 👨‍💼\n\nJajá um atendente vai entrar em contato por aqui para resolver seu problema."
-      : "✅ Recebi suas informações e deixei seu caso para atendimento. 👨‍💼\n\nJajá um atendente vai entrar em contato por aqui."
+      ? "✅ Recebi suas informações e já passei tudo para o atendente da UniFatecie. 👨‍💼\n\nJá já um atendente vai entrar em contato por aqui para resolver seu problema."
+      : "✅ Recebi suas informações e deixei seu caso para atendimento. 👨‍💼\n\nJá já um atendente vai entrar em contato por aqui."
   );
   return true;
 }
@@ -181,12 +211,35 @@ async function tentarEncaminharSuporte(args = {}) {
     return true;
   }
 
+  // Como este guard roda antes das demais camadas, ele próprio reconhece o caso financeiro
+  // para impedir que uma frase como "paguei mas continua em aberto" vire suporte genérico.
+  if (assunto === "suporte_portal_unifatecie" && pedidoPagamentoNaoCompensado(textoOriginal)) {
+    sessao.instituicao = "unifatecie";
+    sessao.assuntoAtual = "suporte_pagamento_unifatecie";
+    sessao.dadosFinanceirosParciais = null;
+    sessao.atualizadoEm = Date.now();
+    await responder(
+      client,
+      msg.from,
+      "Entendi. Se você *já pagou a mensalidade* e ela ainda aparece em aberto, *não faça outro pagamento agora*.\n\nMe envie *RA, CPF e valor pago*. Se souber a data aproximada, pode mandar também. Se tiver comprovante, pode enviar. Depois eu passo as informações para o atendente conferir. 👨‍💼"
+    );
+    return true;
+  }
+
   if (assunto === "suporte_pagamento_unifatecie") {
-    if (!pareceDadosFinanceiros(textoOriginal)) {
+    const combinado = juntarParcial(sessao.dadosFinanceirosParciais, textoOriginal);
+    sessao.dadosFinanceirosParciais = combinado;
+    const campos = camposFinanceiros(combinado);
+
+    if (!(campos.temCpf && campos.temRa && campos.temValor)) {
+      const faltam = [];
+      if (!campos.temRa) faltam.push("RA");
+      if (!campos.temCpf) faltam.push("CPF");
+      if (!campos.temValor) faltam.push("valor pago");
       await responder(
         client,
         msg.from,
-        "Pode me enviar as informações que você tiver: *RA, CPF, data aproximada do pagamento e valor pago*. Se não souber a data exata, tudo bem. Assim que você mandar os dados, eu passo tudo para o atendente conferir e resolver. 👨‍💼\n\nSe não quiser continuar, diga *encerrar atendimento*."
+        `Certo. Para eu passar o caso ao atendente, falta me informar *${faltam.join(", ")}*. Se souber a data aproximada do pagamento, pode mandar também. 👨‍💼\n\nSe não quiser continuar, diga *encerrar atendimento*.`
       );
       return true;
     }
@@ -197,18 +250,26 @@ async function tentarEncaminharSuporte(args = {}) {
       sessao,
       responder,
       problema: "Aluno informa que já pagou a mensalidade, mas ela continua aparecendo em aberto.",
-      informacoes: textoOriginal,
+      informacoes: combinado,
       titulo: "SUPORTE FINANCEIRO — UNIFATECIE",
       assuntoHumano: "atendimento_humano_suporte_financeiro"
     });
   }
 
   if (assunto === "suporte_identificacao_unifatecie") {
-    if (!pareceIdentificacaoAluno(textoOriginal)) {
+    const combinado = juntarParcial(sessao.identificacaoSuporteParcial, textoOriginal);
+    sessao.identificacaoSuporteParcial = combinado;
+
+    if (!pareceIdentificacaoAluno(combinado)) {
+      const temCpf = gruposNumericos(combinado).some(g => g.replace(/\D/g, "").length === 11);
+      const temNome = temNomeProvavel(combinado);
+      const faltam = [];
+      if (!temNome) faltam.push("nome completo");
+      if (!temCpf) faltam.push("CPF");
       await responder(
         client,
         msg.from,
-        "Para eu passar seu problema ao atendente, me informe *nome completo e CPF*. Se souber o RA, pode mandar também.\n\n🔒 *Não envie sua senha.*"
+        `Para eu passar seu problema ao atendente, falta me informar *${faltam.join(" e ")}*. Se souber o RA, pode mandar também.\n\n🔒 *Não envie sua senha.*`
       );
       return true;
     }
@@ -219,18 +280,17 @@ async function tentarEncaminharSuporte(args = {}) {
       sessao,
       responder,
       problema: sessao.problemaSuporteOriginal || "Problema de acesso ao portal da UniFatecie.",
-      informacoes: textoOriginal,
+      informacoes: combinado,
       titulo: "SUPORTE DE PORTAL — UNIFATECIE",
       assuntoHumano: "atendimento_humano_suporte_portal"
     });
   }
 
   if (assunto === "suporte_portal_unifatecie") {
-    if (pareceDadosFinanceiros(textoOriginal)) return false;
-
     sessao.instituicao = "unifatecie";
-    sessao.problemaSuporteOriginal = String(textoOriginal || "").trim().slice(0, 900);
+    sessao.problemaSuporteOriginal = removerSenhaDeclarada(String(textoOriginal || "").trim().slice(0, 900));
     sessao.assuntoAtual = "suporte_identificacao_unifatecie";
+    sessao.identificacaoSuporteParcial = null;
     sessao.atualizadoEm = Date.now();
 
     if (problemaDeAcesso(textoOriginal)) {
@@ -271,8 +331,11 @@ Module._load = function (request, parent, isMain) {
 
 function selfTest() {
   const assert = require("assert");
+  assert.equal(pedidoPagamentoNaoCompensado("Eu paguei uma mensalidade mas ela continua aberta pra eu pagar"), true);
   assert.equal(pareceDadosFinanceiros("278732, 07792688224, eu nao sei o dia exato, paguei 112,20"), true);
+  assert.equal(pareceDadosFinanceiros("07792688224"), false);
   assert.equal(pareceIdentificacaoAluno("Carlos Olimpio, CPF 07792688224"), true);
+  assert.equal(pareceIdentificacaoAluno("CPF 07792688224"), false);
   assert.equal(problemaDeAcesso("Perdi meu RA e minha senha"), true);
   assert.equal(pediuEncerrarSuporte("Encerrar"), true);
   assert.equal(pediuEncerrarSuporte("Encerrar atendimento"), true);
@@ -284,7 +347,9 @@ function selfTest() {
 if (process.argv.includes("--self-test")) selfTest();
 
 module.exports = {
+  camposFinanceiros,
   pareceDadosFinanceiros,
+  pedidoPagamentoNaoCompensado,
   pareceIdentificacaoAluno,
   problemaDeAcesso,
   pediuEncerrarSuporte,
