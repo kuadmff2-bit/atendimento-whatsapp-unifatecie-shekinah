@@ -107,7 +107,6 @@ Module._load = function (request, parent, isMain) {
         pediuHumanoUniFatecie(textoOriginal, sessao)
       ) {
         const agora = Date.now();
-        const minutos = minutosInatividadeHumana();
         sessao.instituicao = "unifatecie";
         sessao.atendimentoHumano = true;
         sessao.etapa = "atendimento_humano";
@@ -122,8 +121,8 @@ Module._load = function (request, parent, isMain) {
           client,
           msg.from,
           notificou
-            ? `👨‍💼 Certo. *Avisei o secretário da UniFatecie* e pausei o Light nesta conversa. O robô fica em silêncio enquanto vocês conversam e volta automaticamente depois de *${minutos} minutos sem novas mensagens*.`
-            : `👨‍💼 Certo. Pausei o Light para o secretário assumir. Ele volta automaticamente depois de *${minutos} minutos sem novas mensagens*.`
+            ? "👨‍💼 Certo. Já avisei o atendente da UniFatecie. Jajá ele entra em contato por aqui."
+            : "👨‍💼 Certo. Deixei sua conversa para atendimento. Jajá um atendente entra em contato por aqui."
         );
         return true;
       }
