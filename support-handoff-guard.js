@@ -150,14 +150,13 @@ function ativarAtendimentoHumano(sessao = {}, assunto = "atendimento_humano_supo
 async function concluirEncaminhamento({ client, msg, sessao, responder, problema, informacoes, titulo, assuntoHumano }) {
   const notificou = await notificarAtendente(client, msg, problema, informacoes, titulo);
   ativarAtendimentoHumano(sessao, assuntoHumano);
-  const minutos = minutosInatividadeHumana();
 
   await responder(
     client,
     msg.from,
     notificou
-      ? `✅ Recebi as informações e *já passei tudo para o atendente da UniFatecie* conferir e resolver seu problema. 👨‍💼\n\nO Light vai ficar em silêncio enquanto o atendente cuida disso e volta automaticamente depois de *${minutos} minutos sem novas mensagens*.`
-      : `✅ Recebi suas informações e deixei a conversa em *atendimento humano* para conferência. 👨‍💼\n\nO Light vai ficar em silêncio enquanto o atendente cuida disso e volta automaticamente depois de *${minutos} minutos sem novas mensagens*.`
+      ? "✅ Recebi suas informações e já passei tudo para o atendente da UniFatecie. 👨‍💼\n\nJajá um atendente vai entrar em contato por aqui para resolver seu problema."
+      : "✅ Recebi suas informações e deixei seu caso para atendimento. 👨‍💼\n\nJajá um atendente vai entrar em contato por aqui."
   );
   return true;
 }
@@ -182,7 +181,6 @@ async function tentarEncaminharSuporte(args = {}) {
     return true;
   }
 
-  // Pagamento ja feito e ainda aberto.
   if (assunto === "suporte_pagamento_unifatecie") {
     if (!pareceDadosFinanceiros(textoOriginal)) {
       await responder(
@@ -205,7 +203,6 @@ async function tentarEncaminharSuporte(args = {}) {
     });
   }
 
-  // A conversa ja esta aguardando identificacao para um problema de portal.
   if (assunto === "suporte_identificacao_unifatecie") {
     if (!pareceIdentificacaoAluno(textoOriginal)) {
       await responder(
@@ -228,8 +225,6 @@ async function tentarEncaminharSuporte(args = {}) {
     });
   }
 
-  // Qualquer problema real informado dentro do portal da UniFatecie e tratado aqui,
-  // sem mandar dados pessoais ou credenciais para a IA.
   if (assunto === "suporte_portal_unifatecie") {
     if (pareceDadosFinanceiros(textoOriginal)) return false;
 
