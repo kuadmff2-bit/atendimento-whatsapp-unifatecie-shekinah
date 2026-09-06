@@ -1,24 +1,6 @@
 const Module = require("module");
 const originalLoad = Module._load;
 
-const CURSOS_UNIFATECIE = [
-  "Pedagogia",
-  "Administração",
-  "Ciências Contábeis",
-  "Análise e Desenvolvimento de Sistemas",
-  "Gestão de Recursos Humanos",
-  "Gestão Financeira",
-  "Gestão Pública",
-  "Logística",
-  "Processos Gerenciais",
-  "Sistemas para Internet",
-  "Gestão da Qualidade",
-  "Investigação Forense e Perícia Criminal",
-  "Design Gráfico",
-  "Design de Moda",
-  "Biblioteconomia"
-];
-
 function norm(texto = "") {
   return String(texto)
     .trim()
@@ -90,10 +72,7 @@ function ativarUnifatecie(sessao, curso = null) {
     sessao.curso = "";
     sessao.cursoAtual = null;
   }
-}
-
-function textoGraduacoes() {
-  return `🎓 *Cursos de graduação — UniFatecie Polo Barreirinha*\n\n${CURSOS_UNIFATECIE.map(c => `• ${c}`).join("\n")}\n\n💰 Nos cursos com valor padrão aprovado: *R$ 112,20/mês*.\n🎁 Matrícula grátis.\n\nMe diga o nome do curso que você quer conhecer melhor. 😊`;
+  sessao.atualizadoEm = Date.now();
 }
 
 Module._load = function (request, parent, isMain) {
@@ -108,26 +87,17 @@ Module._load = function (request, parent, isMain) {
     const original = exp.tentarCorrecoesAtendimento;
 
     exp.tentarCorrecoesAtendimento = async function (args = {}) {
-      const { client, msg, textoOriginal, sessao, responder } = args;
+      const { textoOriginal, sessao } = args;
       if (!sessao || !textoOriginal || emFluxoEstruturado(sessao)) return original(args);
 
       const t = norm(textoOriginal);
       const curso = cursoUnifatecieMencionado(t);
 
-      // Palavras de ensino superior sempre tiram a conversa do catálogo de cursos livres da Shekinah.
-      if (querEnsinoSuperior(t)) {
+      // Este arquivo agora SOMENTE define o contexto da instituição.
+      // A resposta de catálogo fica a cargo do priority-router/unifatecie-catalogo,
+      // evitando que uma lista local antiga de poucos cursos apareça para o aluno.
+      if (querEnsinoSuperior(t) || curso) {
         ativarUnifatecie(sessao, curso);
-        if (querListaGraduacao(t) && !curso && typeof responder === "function") {
-          await responder(client, msg.from, textoGraduacoes());
-          return true;
-        }
-        return original(args);
-      }
-
-      // Cursos claramente universitários também mudam o contexto automaticamente.
-      if (curso) {
-        ativarUnifatecie(sessao, curso);
-        return original(args);
       }
 
       return original(args);
@@ -139,4 +109,15 @@ Module._load = function (request, parent, isMain) {
   return exp;
 };
 
-module.exports = { norm, querEnsinoSuperior, querListaGraduacao, cursoUnifatecieMencionado };
+function selfTest() {
+  const assert = require("assert");
+  assert.equal(querEnsinoSuperior(norm("quero cursos de graduação")), true);
+  assert.equal(querListaGraduacao(norm("mostra todos os cursos de graduação")), true);
+  assert.equal(cursoUnifatecieMencionado(norm("quero saber sobre ADS")), "Análise e Desenvolvimento de Sistemas");
+  assert.equal(querEnsinoSuperior(norm("curso de maquiagem da Shekinah")), false);
+  console.log("✅ Self-test do roteamento de instituição aprovado.");
+}
+
+if (process.argv.includes("--self-test")) selfTest();
+
+module.exports = { norm, querEnsinoSuperior, querListaGraduacao, cursoUnifatecieMencionado, ativarUnifatecie };
