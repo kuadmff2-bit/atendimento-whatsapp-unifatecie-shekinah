@@ -52,7 +52,6 @@ function mockArgs(textoOriginal, sessao = {}) {
 }
 
 async function run() {
-  // 1) Portal e suporte nunca podem virar catálogo.
   check("portal detectado", () => assert.equal(conversa.pedidoSuportePortal("Estou com um problema no meu portal"), true));
   check("alunonet detectado", () => assert.equal(conversa.pedidoSuportePortal("Não consigo entrar no AlunoNet"), true));
   check("curso não é portal", () => assert.equal(conversa.pedidoSuportePortal("Qual o valor do curso de Administração?"), false));
@@ -80,7 +79,6 @@ async function run() {
     assert.doesNotMatch(a.enviadas[0].texto, /Shekinah/i);
   });
 
-  // 2) Problemas de acesso: coletar identificação sem expor senha à IA.
   await checkAsync("perda de RA e senha entra no suporte seguro", async () => {
     const sessao = { instituicao: "unifatecie", assuntoAtual: "suporte_portal_unifatecie" };
     const a = mockArgs("Perdi meu RA e minha senha", sessao);
@@ -122,7 +120,6 @@ async function run() {
     assert.equal(a2.admin.length, 1);
   });
 
-  // 3) Financeiro: identificar problema antes do suporte genérico e acumular dados.
   check("frase financeira sem números é reconhecida", () => assert.equal(suporte.pedidoPagamentoNaoCompensado("Eu paguei uma mensalidade mas ela continua aberta pra eu pagar"), true));
   check("CPF sozinho não conclui financeiro", () => assert.equal(suporte.pareceDadosFinanceiros("CPF 12345678901"), false));
   check("dados financeiros completos", () => assert.equal(suporte.pareceDadosFinanceiros("RA 555666, CPF 12345678901, paguei 112,20"), true));
@@ -133,15 +130,15 @@ async function run() {
     const handled = await suporte.tentarEncaminharSuporte(a);
     assert.equal(handled, true);
     assert.equal(sessao.assuntoAtual, "suporte_pagamento_unifatecie");
-    assert.match(a.enviadas[0].texto, /RA/i);
-    assert.match(a.enviadas[0].texto, /CPF/i);
+    assert.match(a.enviadas[0].texto, /\bRA\b/i);
+    assert.match(a.enviadas[0].texto, /\bCPF\b/i);
   });
 
   await checkAsync("financeiro aceita dados em etapas", async () => {
     const sessao = { instituicao: "unifatecie", assuntoAtual: "suporte_pagamento_unifatecie" };
     const a1 = mockArgs("RA 555666", sessao);
     await suporte.tentarEncaminharSuporte(a1);
-    assert.match(a1.enviadas[0].texto, /CPF/i);
+    assert.match(a1.enviadas[0].texto, /\bCPF\b/i);
     const a2 = mockArgs("CPF 12345678901", sessao);
     await suporte.tentarEncaminharSuporte(a2);
     assert.match(a2.enviadas[0].texto, /valor pago/i);
@@ -161,16 +158,14 @@ async function run() {
     assert.equal(handled, true);
     assert.equal(sessao.assuntoAtual, null);
     assert.match(a.enviadas[0].texto, /Atendimento encerrado/i);
-    assert.doesNotMatch(a.enviadas[0].texto, /RA|CPF|valor pago/i);
+    assert.doesNotMatch(a.enviadas[0].texto, /\bRA\b|\bCPF\b|valor pago/i);
   });
   check("não quero encerrar não encerra", () => assert.equal(suporte.pediuEncerrarSuporte("não quero encerrar"), false));
 
-  // 4) Handoff humano explícito.
   check("pedido de secretário", () => assert.equal(humano.pediuHumanoUniFatecie("Quero falar com o secretário", { instituicao: "unifatecie" }), true));
   check("pedido de atendente", () => assert.equal(humano.pediuHumanoUniFatecie("Quero falar com um atendente", { instituicao: "unifatecie" }), true));
   check("curso não pede humano", () => assert.equal(humano.pediuHumanoUniFatecie("Quero saber os cursos", { instituicao: "unifatecie" }), false));
 
-  // 5) EAD Shekinah: variações naturais e objetivo por área.
   check("E A D normaliza", () => assert.equal(eadDireto.ehEadExplicito("E A D"), true));
   check("a distância normaliza", () => assert.equal(eadDireto.ehEadExplicito("curso a distância"), true));
   check("apoio EAD é genérico", () => assert.equal(eadDireto.ehPedidoGenericoEad("Boa noite, vocês têm cursos de apoio em E A D?"), true));
@@ -198,13 +193,11 @@ async function run() {
   check("problema no portal não é objetivo de curso", () => assert.equal(inteligencia.parecePedidoPorObjetivo("estou com um problema no meu portal"), false));
   check("encerrar não é objetivo de curso", () => assert.equal(inteligencia.parecePedidoPorObjetivo("encerrar atendimento"), false));
 
-  // 6) Roteamento institucional não deve confundir curso livre com graduação.
   check("graduação ativa ensino superior", () => assert.equal(instituicao.querEnsinoSuperior(instituicao.norm("quero cursos de graduação")), true));
   check("lista de graduação", () => assert.equal(instituicao.querListaGraduacao(instituicao.norm("mostra todos os cursos de graduação")), true));
   check("ADS reconhecido", () => assert.equal(instituicao.cursoUnifatecieMencionado(instituicao.norm("quero saber de ADS")), "Análise e Desenvolvimento de Sistemas"));
   check("maquiagem Shekinah não ativa superior", () => assert.equal(instituicao.querEnsinoSuperior(instituicao.norm("curso de maquiagem da Shekinah")), false));
 
-  // 7) Mudança de assunto / saudações.
   check("boa noite isolado é saudação", () => assert.equal(conversa.saudacaoPura("Boa noite"), true));
   check("boa noite com problema não é saudação pura", () => assert.equal(conversa.saudacaoPura("Boa noite, estou com problema no portal"), false));
   check("financeiro é conversa de suporte", () => assert.equal(conversa.pareceConversaOuSuporte(conversa.norm("Minha mensalidade não baixou")), true));
