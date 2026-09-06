@@ -18,10 +18,41 @@ function patchCodigo(codigo = "") {
     return out;
   }
 
-  const injecao = `${alvo}\n\n    if (typeof client.getConnectionState === \"function\") {\n      let estadoConexaoLight = \"DESCONHECIDO\";\n      let desdeEstadoRuimLight = Date.now();\n      let recargasLight = 0;\n      let verificandoEstadoLight = false;\n\n      const estadosRuinsLight = new Set([\"SYNCING\", \"PAIRING\", \"OPENING\", \"TIMEOUT\"]);\n\n      const lerEstadoLight = async () => {\n        try {\n          const atual = String(await client.getConnectionState() || \"DESCONHECIDO\").toUpperCase();\n          if (atual !== estadoConexaoLight) {\n            estadoConexaoLight = atual;\n            console.log(\"📡 Estado real do WhatsApp: \" + atual);\n          }\n          return atual;\n        } catch (error) {\n          console.warn(\"⚠️ Não foi possível ler o estado real do WhatsApp:\", error?.message || error);\n          return \"ERRO\";\n        }\n      };\n\n      const verificarEstadoLight = async () => {\n        if (verificandoEstadoLight) return;\n        verificandoEstadoLight = true;\n        try {\n          const estado = await lerEstadoLight();\n          if (estado === \"CONNECTED\") {\n            desdeEstadoRuimLight = Date.now();\n            recargasLight = 0;\n            return;\n          }\n\n          if (!estadosRuinsLight.has(estado)) {\n            desdeEstadoRuimLight = Date.now();\n            return;\n          }\n\n          const presoPor = Date.now() - desdeEstadoRuimLight;\n          if (presoPor < 15000 || recargasLight >= 2) return;\n\n          recargasLight += 1;\n          desdeEstadoRuimLight = Date.now();\n          console.warn(\"⚠️ WhatsApp preso em \" + estado + \"; recarregando a sessão (tentativa \" + recargasLight + \"/2).\");\n\n          if (client.page && typeof client.page.reload === \"function\") {\n            try {\n              await client.page.reload({ waitUntil: \"domcontentloaded\", timeout: 60000 });\n              await delay(5000);\n            } catch (error) {\n              console.warn(\"⚠️ Falha ao recarregar a sessão do WhatsApp:\", error?.message || error);\n            }\n          }\n        } finally {\n          verificandoEstadoLight = false;\n        }\n      };\n\n      verificarEstadoLight().catch(() => {});\n      const watchdogConexaoLight = setInterval(verificarEstadoLight, 5000);\n      watchdogConexaoLight.unref?.();\n      console.log(\"🩺 Watchdog de sincronização do WhatsApp ativo.\");\n    }`;
+  const injecao = `${alvo}
+
+    // Watchdog que monitoriza apenas STATUS INTERNO, não chama getConnectionState().
+    // getConnectionState() causa Runtime.callFunctionOn timeout no Chromium/Railway
+    // e bloqueia novos eventos de mensagem. Aqui usamos apenas state tracking interno.
+    if (typeof client.getConnectionState === "function") {
+      let estadoRelatadoLight = "UNKNOWN";
+      let estadoUltimoEventoLight = Date.now();
+
+      // Registra mudanças de state SYNC do WPPConnect (não chama métodos no Chromium)
+      if (typeof client.onStateChange === "function") {
+        try {
+          client.onStateChange((state) => {
+            console.log("🔄 onStateChange event: " + String(state));
+            estadoRelatadoLight = String(state || "UNKNOWN");
+            estadoUltimoEventoLight = Date.now();
+          });
+        } catch (_) {}
+      }
+
+      // Log de heartbeat simples (sem I/O Chromium)
+      const heartbeatLight = setInterval(() => {
+        const agora = Date.now();
+        const tempoSemEvento = (agora - estadoUltimoEventoLight) / 1000;
+        if (tempoSemEvento > 30) {
+          console.log("ℹ️ Estado reportado: " + estadoRelatadoLight + " (há " + Math.round(tempoSemEvento) + "s sem mudança)");
+        }
+      }, 30000);
+      heartbeatLight.unref?.();
+
+      console.log("🩺 Watchdog de estado (sem I/O Chromium) ativo.");
+    }`;
 
   out = out.replace(alvo, injecao);
-  console.log("🩺 Proteção contra sessão presa em SYNCING ativa.");
+  console.log("✅ Proteção contra getConnectionState() timeout ativa: usando apenas state eventos.");
   return out;
 }
 
@@ -31,3 +62,4 @@ Module.prototype._compile = function (content, filename) {
 };
 
 module.exports = { patchCodigo };
+
