@@ -17,17 +17,11 @@ function destinoAdmin() {
 }
 
 function nomeContato(msg = {}) {
-  return String(
-    msg?.sender?.pushname ||
-    msg?.sender?.formattedName ||
-    msg?.sender?.name ||
-    "Contato sem nome"
-  ).trim();
+  return String(msg?.sender?.pushname || msg?.sender?.formattedName || msg?.sender?.name || "Contato sem nome").trim();
 }
 
 function identificadorContato(msg = {}) {
-  const candidatos = [msg?.sender?.id?.user, msg?.from, msg?.author, msg?.chatId];
-  for (const valor of candidatos) {
+  for (const valor of [msg?.sender?.id?.user, msg?.from, msg?.author, msg?.chatId]) {
     const texto = String(valor || "").trim();
     if (texto) return texto.replace(/@c\.us$|@lid$/i, "");
   }
@@ -68,20 +62,27 @@ function resetarSuporte(sessao = {}) {
   });
 }
 
-function gruposNumericos(texto = "") {
-  return String(texto || "").match(/\d[\d.\-\/\s,]{2,}\d/g) || [];
+function blocosNumericos(texto = "") {
+  return String(texto || "")
+    .split(/[\s,;]+/)
+    .map(raw => ({ raw, digits: raw.replace(/\D/g, "") }))
+    .filter(x => x.digits);
+}
+
+function temCpfNoTexto(texto = "") {
+  return blocosNumericos(texto).some(x => x.digits.length === 11);
 }
 
 function camposFinanceiros(texto = "") {
   const bruto = String(texto || "").trim();
-  const grupos = gruposNumericos(bruto).map(raw => ({ raw, digits: raw.replace(/\D/g, "") }));
-  const temCpf = grupos.some(g => g.digits.length === 11);
+  const blocos = blocosNumericos(bruto);
+  const temCpf = blocos.some(x => x.digits.length === 11);
   const temValor = /\b\d{1,5}\s*[,.]\s*\d{2}\b/.test(bruto);
   const temRaRotulado = /\bra\b\s*[:#-]?\s*\d{4,12}\b/i.test(bruto);
-  const temRaSolto = grupos.some(g => {
-    const n = g.digits.length;
-    const pareceDinheiro = /[,.]\s*\d{2}\s*$/.test(g.raw);
-    return n >= 5 && n <= 10 && !pareceDinheiro;
+  const temRaSolto = blocos.some(x => {
+    const n = x.digits.length;
+    const pareceData = /^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}$/.test(x.raw);
+    return n >= 5 && n <= 10 && !pareceData;
   });
   return { temCpf, temValor, temRa: temRaRotulado || temRaSolto };
 }
@@ -103,19 +104,16 @@ function pedidoPagamentoNaoCompensado(texto = "") {
 
 function temNomeProvavel(texto = "") {
   const semNumeros = norm(texto)
-    .replace(/\b(cpf|ra|meu|meu nome|nome|nome completo|sou|me chamo)\b/g, " ")
+    .replace(/\b(cpf|ra|meu|nome|completo|sou|me chamo)\b/g, " ")
     .replace(/\d+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const palavras = semNumeros.split(" ").filter(p => /^[a-z]{2,}$/.test(p));
-  return palavras.length >= 2;
+  return semNumeros.split(" ").filter(p => /^[a-z]{2,}$/.test(p)).length >= 2;
 }
 
 function pareceIdentificacaoAluno(texto = "") {
   const bruto = String(texto || "").trim();
-  if (!bruto) return false;
-  const temCpf = gruposNumericos(bruto).some(g => g.replace(/\D/g, "").length === 11);
-  return temCpf && temNomeProvavel(bruto);
+  return Boolean(bruto && temCpfNoTexto(bruto) && temNomeProvavel(bruto));
 }
 
 function problemaDeAcesso(texto = "") {
@@ -141,7 +139,6 @@ function juntarParcial(anterior, atual) {
 async function notificarAtendente(client, msg, problema, informacoes, titulo = "SUPORTE — UNIFATECIE") {
   const destino = destinoAdmin();
   if (!destino || typeof client?.sendText !== "function") return false;
-
   const aviso = [
     `🔔 *${titulo}*`,
     "",
@@ -154,7 +151,6 @@ async function notificarAtendente(client, msg, problema, informacoes, titulo = "
     "",
     "Assuma a conversa manualmente quando puder."
   ].join("\n");
-
   try {
     await client.sendText(destino, aviso);
     return true;
@@ -180,7 +176,6 @@ async function concluirEncaminhamento({ client, msg, sessao, responder, problema
   ativarAtendimentoHumano(sessao, assuntoHumano);
   sessao.identificacaoSuporteParcial = null;
   sessao.dadosFinanceirosParciais = null;
-
   await responder(
     client,
     msg.from,
@@ -196,23 +191,15 @@ async function tentarEncaminharSuporte(args = {}) {
   if (!sessao || !msg || typeof responder !== "function") return false;
 
   const assunto = String(sessao.assuntoAtual || "");
-  const emSuporte = assunto === "suporte_portal_unifatecie" ||
-    assunto === "suporte_pagamento_unifatecie" ||
-    assunto === "suporte_identificacao_unifatecie";
+  const emSuporte = assunto === "suporte_portal_unifatecie" || assunto === "suporte_pagamento_unifatecie" || assunto === "suporte_identificacao_unifatecie";
   if (!emSuporte) return false;
 
   if (pediuEncerrarSuporte(textoOriginal)) {
     resetarSuporte(sessao);
-    await responder(
-      client,
-      msg.from,
-      "✅ *Atendimento encerrado.* Não precisa enviar mais nenhum dado. Se precisar de outra coisa depois, é só me chamar. 😊"
-    );
+    await responder(client, msg.from, "✅ *Atendimento encerrado.* Não precisa enviar mais nenhum dado. Se precisar de outra coisa depois, é só me chamar. 😊");
     return true;
   }
 
-  // Como este guard roda antes das demais camadas, ele próprio reconhece o caso financeiro
-  // para impedir que uma frase como "paguei mas continua em aberto" vire suporte genérico.
   if (assunto === "suporte_portal_unifatecie" && pedidoPagamentoNaoCompensado(textoOriginal)) {
     sessao.instituicao = "unifatecie";
     sessao.assuntoAtual = "suporte_pagamento_unifatecie";
@@ -230,7 +217,6 @@ async function tentarEncaminharSuporte(args = {}) {
     const combinado = juntarParcial(sessao.dadosFinanceirosParciais, textoOriginal);
     sessao.dadosFinanceirosParciais = combinado;
     const campos = camposFinanceiros(combinado);
-
     if (!(campos.temCpf && campos.temRa && campos.temValor)) {
       const faltam = [];
       if (!campos.temRa) faltam.push("RA");
@@ -243,12 +229,8 @@ async function tentarEncaminharSuporte(args = {}) {
       );
       return true;
     }
-
     return concluirEncaminhamento({
-      client,
-      msg,
-      sessao,
-      responder,
+      client, msg, sessao, responder,
       problema: "Aluno informa que já pagou a mensalidade, mas ela continua aparecendo em aberto.",
       informacoes: combinado,
       titulo: "SUPORTE FINANCEIRO — UNIFATECIE",
@@ -259,9 +241,8 @@ async function tentarEncaminharSuporte(args = {}) {
   if (assunto === "suporte_identificacao_unifatecie") {
     const combinado = juntarParcial(sessao.identificacaoSuporteParcial, textoOriginal);
     sessao.identificacaoSuporteParcial = combinado;
-
     if (!pareceIdentificacaoAluno(combinado)) {
-      const temCpf = gruposNumericos(combinado).some(g => g.replace(/\D/g, "").length === 11);
+      const temCpf = temCpfNoTexto(combinado);
       const temNome = temNomeProvavel(combinado);
       const faltam = [];
       if (!temNome) faltam.push("nome completo");
@@ -273,12 +254,8 @@ async function tentarEncaminharSuporte(args = {}) {
       );
       return true;
     }
-
     return concluirEncaminhamento({
-      client,
-      msg,
-      sessao,
-      responder,
+      client, msg, sessao, responder,
       problema: sessao.problemaSuporteOriginal || "Problema de acesso ao portal da UniFatecie.",
       informacoes: combinado,
       titulo: "SUPORTE DE PORTAL — UNIFATECIE",
@@ -292,7 +269,6 @@ async function tentarEncaminharSuporte(args = {}) {
     sessao.assuntoAtual = "suporte_identificacao_unifatecie";
     sessao.identificacaoSuporteParcial = null;
     sessao.atualizadoEm = Date.now();
-
     if (problemaDeAcesso(textoOriginal)) {
       await responder(
         client,
@@ -301,7 +277,6 @@ async function tentarEncaminharSuporte(args = {}) {
       );
       return true;
     }
-
     await responder(
       client,
       msg.from,
@@ -309,16 +284,12 @@ async function tentarEncaminharSuporte(args = {}) {
     );
     return true;
   }
-
   return false;
 }
 
 Module._load = function (request, parent, isMain) {
   const exp = originalLoad.apply(this, arguments);
-  if (
-    (request === "./atendimento-fixes" || request.endsWith("/atendimento-fixes")) &&
-    exp && typeof exp.tentarCorrecoesAtendimento === "function" && !exp.__supportHandoffGuard
-  ) {
+  if ((request === "./atendimento-fixes" || request.endsWith("/atendimento-fixes")) && exp && typeof exp.tentarCorrecoesAtendimento === "function" && !exp.__supportHandoffGuard) {
     const original = exp.tentarCorrecoesAtendimento;
     exp.tentarCorrecoesAtendimento = async function (args = {}) {
       if (await tentarEncaminharSuporte(args)) return true;
