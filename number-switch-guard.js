@@ -7,16 +7,16 @@ function isLegacy(filename = "") {
 
 function patchCodigo(codigo = "") {
   let out = String(codigo);
-  const alvo = `      statusFind: (statusSession) => {\n        if (["isLogged", "qrReadSuccess", "inChat"].includes(statusSession)) {\n          whatsappConectado = true;\n          qrCodeImagem = null;\n        }\n        console.log(\`🔐 Estado da autenticação: \${statusSession}\`);\n      },`;
+  const alvo = "      statusFind: (statusSession) => {";
 
   if (!out.includes(alvo)) {
     console.warn("⚠️ Number-switch guard: trecho de autenticação não encontrado; nenhuma alteração aplicada.");
     return out;
   }
 
-  const novo = `      statusFind: (statusSession) => {\n        if (["isLogged", "qrReadSuccess", "inChat"].includes(statusSession)) {\n          whatsappConectado = true;\n          qrCodeImagem = null;\n        }\n        if (statusSession === "qrReadSuccess") {\n          try {\n            sessoes.clear();\n            persistirSessoes(sessoes);\n            console.log("🧹 Novo WhatsApp conectado: sessões antigas de conversa foram limpas.");\n          } catch (error) {\n            console.warn("⚠️ Não foi possível limpar sessões antigas após trocar o número:", error?.message || error);\n          }\n        }\n        console.log(\`🔐 Estado da autenticação: \${statusSession}\`);\n      },`;
+  const injecao = `${alvo}\n        if (statusSession === "qrReadSuccess") {\n          try {\n            sessoes.clear();\n            persistirSessoes(sessoes);\n            console.log("🧹 Novo WhatsApp conectado: sessões antigas de conversa foram limpas.");\n          } catch (error) {\n            console.warn("⚠️ Não foi possível limpar sessões antigas após trocar o número:", error?.message || error);\n          }\n        }`;
 
-  out = out.replace(alvo, novo);
+  out = out.replace(alvo, injecao);
   console.log("📱 Proteção de troca de número ativa: nova leitura de QR zera contextos antigos.");
   return out;
 }
