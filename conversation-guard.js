@@ -51,7 +51,7 @@ function contextoSuporte(sessao = {}) {
 }
 
 function mencionaPortal(t = "") {
-  return /\b(portal|alunonet|ava|ambiente virtual|plataforma|area do aluno)\b/.test(t);
+  return /\b(portal|alunonet|ava|ambiente virtual|area do aluno)\b/.test(t);
 }
 
 function temSinalDeProblema(t = "") {
@@ -61,14 +61,6 @@ function temSinalDeProblema(t = "") {
 function pedidoSuportePortal(texto = "") {
   const t = norm(texto);
   return mencionaPortal(t) && temSinalDeProblema(t);
-}
-
-function mencionaUni(t = "") {
-  return /\b(unifatecie|fatecie|faculdade|alunonet)\b/.test(t);
-}
-
-function mencionaShekinah(t = "") {
-  return /\bshekinah\b/.test(t);
 }
 
 function pedidoPagamentoNaoCompensado(texto = "") {
@@ -96,24 +88,19 @@ function querHumano(t = "") {
 async function tratarPortal({ client, msg, textoOriginal, sessao, responder }) {
   const t = norm(textoOriginal);
 
-  if (sessao.assuntoAtual === "suporte_portal_escolher_instituicao") {
-    if (mencionaUni(t) || /^(uni|unifatecie|fatecie)$/.test(t)) {
-      limparContextoCatalogo(sessao, false);
-      sessao.instituicao = "unifatecie";
-      sessao.assuntoAtual = "suporte_portal_unifatecie";
-      await responder(client, msg.from, "Certo. É no portal da *UniFatecie*. Me diga o que está acontecendo ou, se preferir, envie um print do erro. 😊");
-      return true;
-    }
-    if (mencionaShekinah(t) || /^shekinah$/.test(t)) {
-      limparContextoCatalogo(sessao, false);
-      sessao.instituicao = "shekinah";
-      sessao.assuntoAtual = "suporte_portal_shekinah";
-      await responder(client, msg.from, "Certo. É na plataforma da *Shekinah*. Me diga o que está acontecendo ou envie um print do erro. 😊");
-      return true;
-    }
+  // Compatibilidade com sessoes antigas que ainda ficaram na pergunta de instituicao.
+  if (sessao.assuntoAtual === "suporte_portal_escolher_instituicao" || sessao.assuntoAtual === "suporte_portal_shekinah") {
+    sessao.instituicao = "unifatecie";
+    sessao.assuntoAtual = "suporte_portal_unifatecie";
+    sessao.atualizadoEm = Date.now();
+    await responder(
+      client,
+      msg.from,
+      "Certo. *Portal é somente o da UniFatecie.* A Shekinah não possui portal próprio. Me diga o que está acontecendo no portal da UniFatecie ou envie um print do erro. 😊"
+    );
+    return true;
   }
 
-  // Continuação natural do suporte da UniFatecie. Nunca transforma problema financeiro em oferta de curso.
   if (sessao.assuntoAtual === "suporte_portal_unifatecie") {
     if (querHumano(t)) return false;
     if (pedidoPagamentoNaoCompensado(textoOriginal)) {
@@ -122,46 +109,34 @@ async function tratarPortal({ client, msg, textoOriginal, sessao, responder }) {
       await responder(
         client,
         msg.from,
-        "Entendi. Se você *já pagou a mensalidade* e ela ainda aparece em aberto, *não faça outro pagamento agora*. Pode ser que o pagamento ainda não tenha sido compensado no sistema.\n\nPara conferir, me informe *RA, CPF, data do pagamento e valor pago*. Se tiver o comprovante, pode enviar também. Só consideramos a mensalidade quitada depois que o sistema confirmar a compensação. ✅"
+        "Entendi. Se você *já pagou a mensalidade* e ela ainda aparece em aberto, *não faça outro pagamento agora*. Pode ser que o pagamento ainda não tenha sido compensado no sistema.\n\nPara conferir, me informe *RA, CPF, data do pagamento e valor pago*. Se tiver o comprovante, pode enviar também. ✅"
       );
       return true;
     }
 
-    if (pareceConversaOuSuporte(t) && !pareceConsultaDeCurso(t)) {
-      return false;
-    }
+    // Outros problemas de portal ficam no fluxo seguro do bot e nunca viram oferta de curso.
+    if (pareceConversaOuSuporte(t) && !pareceConsultaDeCurso(t)) return false;
   }
 
-  // Enquanto um problema de pagamento está sendo tratado, o catálogo não deve aparecer do nada.
   if (sessao.assuntoAtual === "suporte_pagamento_unifatecie") {
     if (querHumano(t)) return false;
-    if (!pareceConsultaDeCurso(t)) {
-      sessao.instituicao = "unifatecie";
-      sessao.atualizadoEm = Date.now();
-      return false;
-    }
+    sessao.instituicao = "unifatecie";
+    sessao.atualizadoEm = Date.now();
+    return false;
   }
 
   if (!pedidoSuportePortal(textoOriginal)) return false;
 
   limparContextoCatalogo(sessao, true);
+  sessao.instituicao = "unifatecie";
+  sessao.assuntoAtual = "suporte_portal_unifatecie";
+  sessao.atualizadoEm = Date.now();
 
-  if (mencionaUni(t)) {
-    sessao.instituicao = "unifatecie";
-    sessao.assuntoAtual = "suporte_portal_unifatecie";
-    await responder(client, msg.from, "Claro. Me diga o que está acontecendo no portal da *UniFatecie* ou envie um print do erro que eu tento te orientar. 😊");
-    return true;
-  }
-
-  if (mencionaShekinah(t)) {
-    sessao.instituicao = "shekinah";
-    sessao.assuntoAtual = "suporte_portal_shekinah";
-    await responder(client, msg.from, "Claro. Me diga o que está acontecendo na plataforma da *Shekinah* ou envie um print do erro que eu tento te orientar. 😊");
-    return true;
-  }
-
-  sessao.assuntoAtual = "suporte_portal_escolher_instituicao";
-  await responder(client, msg.from, "Claro. Esse problema é no portal da *UniFatecie* ou na plataforma da *Shekinah*? 😊");
+  await responder(
+    client,
+    msg.from,
+    "Claro. Como você falou em *portal*, já sei que é da *UniFatecie*. A Shekinah não possui portal próprio.\n\nMe diga o que está acontecendo no portal da UniFatecie ou, se preferir, envie um print do erro. 😊"
+  );
   return true;
 }
 
@@ -172,7 +147,6 @@ async function tentarConversaNatural(args = {}) {
 
   const t = norm(textoOriginal);
 
-  // Saudação isolada inicia conversa limpa; catálogo antigo não contamina o próximo assunto.
   if (saudacaoPura(t)) {
     limparContextoCatalogo(sessao, true);
     return false;
@@ -180,7 +154,6 @@ async function tentarConversaNatural(args = {}) {
 
   if (await tratarPortal({ client, msg, textoOriginal, sessao, responder })) return true;
 
-  // Se mudou para suporte/conversa normal, abandona contexto de catálogo antes das outras camadas.
   if (contextoEad(sessao) && pareceConversaOuSuporte(t) && !pareceConsultaDeCurso(t)) {
     limparContextoCatalogo(sessao, true);
   }
@@ -210,8 +183,8 @@ function selfTest() {
   assert.equal(pedidoSuportePortal("Estou com um problema no meu portal"), true);
   assert.equal(pedidoSuportePortal("Quero saber o valor do curso"), false);
   assert.equal(pedidoPagamentoNaoCompensado("Eu paguei uma mensalidade mas ela continua aberta pra eu pagar"), true);
-  assert.equal(pareceConsultaDeCurso(norm("Quanto custa o curso de informática?")), true);
-  assert.equal(pareceConversaOuSuporte(norm("Eu paguei uma mensalidade e ainda está aberta")), true);
+  assert.equal(pareceConsultaDeCurso(norm("Quanto custa o curso de informatica?")), true);
+  assert.equal(pareceConversaOuSuporte(norm("Perdi meu RA e minha senha")), true);
   console.log("✅ Self-test de conversa natural aprovado.");
 }
 
