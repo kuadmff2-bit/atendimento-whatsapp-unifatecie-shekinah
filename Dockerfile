@@ -21,7 +21,7 @@ COPY package.json ./
 RUN npm install --omit=dev \
     && npm cache clean --force
 
-COPY index.js legacy-index.js qr-runtime.js ia-groq.js ia-groq-ext.js audio-groq.js autonomia.js conversation-core.js conversation-core-ext.js atendimento-fixes.js shekinah-info.js shekinah-forward.js catalogo-extra.js shekinah-ead.js ead-hook.js ead-inteligencia.js disable-gemini.js flow-cancel-guard.js ead-matricula-routing.js institution-router.js structured-flow-guard.js post-matricula-resume.js human-handoff-guard.js ead-direct-guard.js unifatecie-catalogo.js priority-router.js conversation-guard.js support-handoff-guard.js number-switch-guard.js message-event-fallback.js escola-avancada-api.js smoke-audio.js smoke-inteligencia.js smoke-regression-suite.js ./
+COPY index.js legacy-index.js qr-runtime.js ia-groq.js ia-groq-ext.js audio-groq.js autonomia.js conversation-core.js conversation-core-ext.js atendimento-fixes.js shekinah-info.js shekinah-forward.js catalogo-extra.js shekinah-ead.js ead-hook.js ead-inteligencia.js disable-gemini.js flow-cancel-guard.js ead-matricula-routing.js institution-router.js structured-flow-guard.js post-matricula-resume.js human-handoff-guard.js ead-direct-guard.js unifatecie-catalogo.js priority-router.js conversation-guard.js support-handoff-guard.js number-switch-guard.js message-event-fallback.js connection-state-guard.js escola-avancada-api.js smoke-audio.js smoke-inteligencia.js smoke-regression-suite.js ./
 RUN npm run check \
     && mkdir -p /app/tokens
 
