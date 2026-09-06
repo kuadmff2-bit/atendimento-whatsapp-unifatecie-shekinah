@@ -45,6 +45,11 @@ function contextoEad(sessao = {}) {
   return sessao.modalidadeShekinah === "ead" || a.includes("shekinah ead") || a.includes("ead shekinah");
 }
 
+function contextoSuporte(sessao = {}) {
+  const a = String(sessao.assuntoAtual || "").toLowerCase();
+  return a.startsWith("suporte_") || a.startsWith("financeiro_");
+}
+
 function mencionaPortal(t = "") {
   return /\b(portal|alunonet|ava|ambiente virtual|plataforma|area do aluno)\b/.test(t);
 }
@@ -66,12 +71,26 @@ function mencionaShekinah(t = "") {
   return /\bshekinah\b/.test(t);
 }
 
+function pedidoPagamentoNaoCompensado(texto = "") {
+  const t = norm(texto);
+  const falouPagamento = /\b(paguei|pago|pagamento|mensalidade|parcela|boleto)\b/.test(t);
+  const continuaAberto = /\b(ainda|continua|continuou|segue|aparece|consta)\b.*\b(abert|pendente|pagar|cobr|nao pago)/.test(t)
+    || /\b(abert|pendente|pagar|cobr)\w*\b.*\b(ainda|continua|aparece|consta)\b/.test(t);
+  const naoBaixou = /\b(nao|nunca)\b.*\b(baixou|compensou|reconheceu|constou)\b/.test(t)
+    || /\bpagamento\b.*\bnao compens/.test(t);
+  return falouPagamento && (continuaAberto || naoBaixou);
+}
+
 function pareceConsultaDeCurso(t = "") {
-  return /\b(curso|cursos|ead|online|graduacao|faculdade|valor|preco|mensalidade|duracao|aula|aulas|conteudo|grade|certificado|matricula|matricular|programacao|informatica|pedagogia|administracao|design|marketing|apoio|reforco|game|jogo)\b/.test(t);
+  return /\b(curso|cursos|ead|online|graduacao|curso superior|ensino superior|bacharelado|licenciatura|tecnologo|duracao|aulas|conteudo|grade|certificado|matricular|programacao|informatica|pedagogia|administracao|design|marketing|apoio|reforco|game|jogo|engenharia)\b/.test(t);
 }
 
 function pareceConversaOuSuporte(t = "") {
-  return /\b(problema|erro|falha|bug|ajuda|duvida|nao consigo|travou|travando|portal|alunonet|login|senha|conta|documento|boleto|pagamento|cancelamento|secretario|atendente|obrigado|obrigada|valeu)\b/.test(t);
+  return /\b(problema|erro|falha|bug|ajuda|duvida|nao consigo|travou|travando|portal|alunonet|login|senha|conta|documento|boleto|pagamento|paguei|mensalidade|parcela|financeiro|cancelamento|secretario|atendente|obrigado|obrigada|valeu)\b/.test(t);
+}
+
+function querHumano(t = "") {
+  return /\b(secretario|atendente|humano|pessoa|falar com alguem|falar com o secretario|falar com atendente)\b/.test(t);
 }
 
 async function tratarPortal({ client, msg, textoOriginal, sessao, responder }) {
@@ -91,6 +110,35 @@ async function tratarPortal({ client, msg, textoOriginal, sessao, responder }) {
       sessao.assuntoAtual = "suporte_portal_shekinah";
       await responder(client, msg.from, "Certo. É na plataforma da *Shekinah*. Me diga o que está acontecendo ou envie um print do erro. 😊");
       return true;
+    }
+  }
+
+  // Continuação natural do suporte da UniFatecie. Nunca transforma problema financeiro em oferta de curso.
+  if (sessao.assuntoAtual === "suporte_portal_unifatecie") {
+    if (querHumano(t)) return false;
+    if (pedidoPagamentoNaoCompensado(textoOriginal)) {
+      sessao.instituicao = "unifatecie";
+      sessao.assuntoAtual = "suporte_pagamento_unifatecie";
+      await responder(
+        client,
+        msg.from,
+        "Entendi. Se você *já pagou a mensalidade* e ela ainda aparece em aberto, *não faça outro pagamento agora*. Pode ser que o pagamento ainda não tenha sido compensado no sistema.\n\nPara conferir, me informe *RA, CPF, data do pagamento e valor pago*. Se tiver o comprovante, pode enviar também. Só consideramos a mensalidade quitada depois que o sistema confirmar a compensação. ✅"
+      );
+      return true;
+    }
+
+    if (pareceConversaOuSuporte(t) && !pareceConsultaDeCurso(t)) {
+      return false;
+    }
+  }
+
+  // Enquanto um problema de pagamento está sendo tratado, o catálogo não deve aparecer do nada.
+  if (sessao.assuntoAtual === "suporte_pagamento_unifatecie") {
+    if (querHumano(t)) return false;
+    if (!pareceConsultaDeCurso(t)) {
+      sessao.instituicao = "unifatecie";
+      sessao.atualizadoEm = Date.now();
+      return false;
     }
   }
 
@@ -124,7 +172,7 @@ async function tentarConversaNatural(args = {}) {
 
   const t = norm(textoOriginal);
 
-  // Uma saudação isolada inicia uma conversa limpa. Não deixa um catálogo antigo contaminar o próximo assunto.
+  // Saudação isolada inicia conversa limpa; catálogo antigo não contamina o próximo assunto.
   if (saudacaoPura(t)) {
     limparContextoCatalogo(sessao, true);
     return false;
@@ -132,9 +180,7 @@ async function tentarConversaNatural(args = {}) {
 
   if (await tratarPortal({ client, msg, textoOriginal, sessao, responder })) return true;
 
-  // Se a pessoa muda para um assunto de suporte/conversa normal, abandona o contexto EAD antigo antes
-  // de deixar as demais camadas responderem. Assim palavras como "estou", "problema" ou "portal"
-  // nunca são pesquisadas como nome de curso.
+  // Se mudou para suporte/conversa normal, abandona contexto de catálogo antes das outras camadas.
   if (contextoEad(sessao) && pareceConversaOuSuporte(t) && !pareceConsultaDeCurso(t)) {
     limparContextoCatalogo(sessao, true);
   }
@@ -163,8 +209,9 @@ function selfTest() {
   assert.equal(saudacaoPura("Boa noite"), true);
   assert.equal(pedidoSuportePortal("Estou com um problema no meu portal"), true);
   assert.equal(pedidoSuportePortal("Quero saber o valor do curso"), false);
+  assert.equal(pedidoPagamentoNaoCompensado("Eu paguei uma mensalidade mas ela continua aberta pra eu pagar"), true);
   assert.equal(pareceConsultaDeCurso(norm("Quanto custa o curso de informática?")), true);
-  assert.equal(pareceConversaOuSuporte(norm("Estou com um problema no portal")), true);
+  assert.equal(pareceConversaOuSuporte(norm("Eu paguei uma mensalidade e ainda está aberta")), true);
   console.log("✅ Self-test de conversa natural aprovado.");
 }
 
@@ -174,7 +221,9 @@ module.exports = {
   norm,
   saudacaoPura,
   pedidoSuportePortal,
+  pedidoPagamentoNaoCompensado,
   pareceConsultaDeCurso,
   pareceConversaOuSuporte,
+  contextoSuporte,
   tentarConversaNatural,
 };
