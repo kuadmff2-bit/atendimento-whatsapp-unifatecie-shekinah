@@ -20,7 +20,8 @@ function emFluxoEstruturado(sessao = {}) {
     e === "atendimento_humano";
 }
 
-function saudacaoPura(t = "") {
+function saudacaoPura(texto = "") {
+  const t = norm(texto);
   return /^(oi|ola|opa|e ai|eae|bom dia|boa tarde|boa noite|hello|hey)$/.test(t);
 }
 
