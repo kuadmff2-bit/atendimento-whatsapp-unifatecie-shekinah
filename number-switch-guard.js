@@ -1,5 +1,31 @@
+const fs = require("fs");
+const path = require("path");
 const Module = require("module");
 const originalCompile = Module.prototype._compile;
+
+const PASTA_TOKENS = path.join(process.cwd(), "tokens");
+const ARQUIVO_SESSOES = path.join(PASTA_TOKENS, "sessoes.json");
+const MARCADOR_LIMPEZA = path.join(PASTA_TOKENS, ".numero-trocado-sessoes-limpas-v1");
+
+function limparSessoesPersistidasUmaVez() {
+  try {
+    fs.mkdirSync(PASTA_TOKENS, { recursive: true });
+    if (fs.existsSync(MARCADOR_LIMPEZA)) return;
+
+    if (fs.existsSync(ARQUIVO_SESSOES)) {
+      fs.rmSync(ARQUIVO_SESSOES, { force: true });
+      console.log("🧹 Sessões persistidas antigas removidas após a troca do número.");
+    }
+
+    fs.writeFileSync(MARCADOR_LIMPEZA, new Date().toISOString(), "utf8");
+  } catch (error) {
+    console.warn("⚠️ Não foi possível executar a limpeza única de sessões após a troca do número:", error?.message || error);
+  }
+}
+
+// Esta correção roda antes de index.js carregar sessoes.json.
+// É única e serve para a troca de número que já aconteceu antes deste guard existir.
+limparSessoesPersistidasUmaVez();
 
 function isLegacy(filename = "") {
   return /(?:^|[\\/])legacy-index\.js$/.test(String(filename));
@@ -26,4 +52,4 @@ Module.prototype._compile = function (content, filename) {
   return originalCompile.call(this, patched, filename);
 };
 
-module.exports = { patchCodigo };
+module.exports = { patchCodigo, limparSessoesPersistidasUmaVez };
