@@ -40,6 +40,11 @@ function emFluxoEstruturado(sessao = {}) {
     e === "atendimento_humano";
 }
 
+function emContextoSuporte(sessao = {}) {
+  const a = String(sessao.assuntoAtual || "").toLowerCase();
+  return a.startsWith("suporte_") || a.startsWith("financeiro_");
+}
+
 function encerrarAtendimento(t = "") {
   return /^(encerrar|encerrar atendimento|finalizar atendimento|fim|finalizar|sair do atendimento)$/.test(t);
 }
@@ -76,14 +81,6 @@ function perguntaSePrecisaIr(texto = "") {
     || /\b(sair de casa|presencial|precisa ir|ir na instituicao|ir a instituicao)\b/.test(t);
 }
 
-function intencaoUniFatecie(texto = "", sessao = {}) {
-  const t = norm(texto);
-  const explicita = /\b(unifatecie|fatecie|faculdade|graduacao|curso superior|cursos superiores|ensino superior|bacharelado|licenciatura|tecnologo|segunda graduacao|2 graduacao)\b/.test(t);
-  const contexto = sessao.instituicao === "unifatecie" || norm(sessao.assuntoAtual).includes("unifatecie");
-  const perguntaCurso = /\b(curso|cursos|valor|preco|mensalidade|duracao|dura|tempo|anos|meses|graduacao|bacharelado|licenciatura|tecnologo|engenharia|pedagogia|administracao|gestao|sistemas|design|contabeis|biblioteconomia|marketing|logistica)\b/.test(t);
-  return explicita || (contexto && perguntaCurso);
-}
-
 function pedidoQuantidade(t = "") {
   return /\b(quantos|quantidade|numero de)\b.*\b(curso|cursos|graduacao|graduacoes)\b/.test(t);
 }
@@ -96,6 +93,34 @@ function pedidoLista(t = "") {
 
 function pediuSegundaGraduacao(t = "") {
   return /\b(segunda graduacao|2 graduacao|portador de diploma)\b/.test(t);
+}
+
+function mensagemFinanceiraOuSuporte(t = "") {
+  return /\b(portal|alunonet|problema|erro|falha|bug|login|senha|documento|boleto|pagamento|paguei|pago|mensalidade|parcela|financeiro|vencimento|segunda via|cancelamento|trancamento|requerimento|comprovante|compensacao|compensou|aberta|pendente)\b/.test(t);
+}
+
+function perguntaDetalheDoCursoAtual(t = "", sessao = {}) {
+  if (!sessao?.cursoAtual?.nome) return false;
+  return /^(e )?(o )?(valor|preco|mensalidade|duracao|tempo|quanto custa|quantos anos|quantos meses|modalidade|estagio|detalhes|mais detalhes)$/.test(t)
+    || /\b(valor|preco|quanto custa|duracao|quantos anos|quantos meses|modalidade|estagio)\b/.test(t);
+}
+
+function temSinalAcademicoExplicito(t = "") {
+  return /\b(curso|cursos|graduacao|graduacoes|curso superior|ensino superior|bacharelado|licenciatura|tecnologo|engenharia|pedagogia|administracao|contabeis|sistemas|design|biblioteconomia|marketing|logistica|recursos humanos|gestao financeira|gestao publica|processos gerenciais|analise e desenvolvimento|ads)\b/.test(t);
+}
+
+function pedidoExplicitoDeCurso(texto = "", sessao = {}) {
+  const t = norm(texto);
+  if (pedidoQuantidade(t) || pedidoLista(t)) return true;
+  if (perguntaDetalheDoCursoAtual(t, sessao)) return true;
+  return temSinalAcademicoExplicito(t);
+}
+
+function intencaoUniFatecie(texto = "", sessao = {}) {
+  const t = norm(texto);
+  const explicita = /\b(unifatecie|fatecie|faculdade|graduacao|curso superior|cursos superiores|ensino superior|bacharelado|licenciatura|tecnologo|segunda graduacao|2 graduacao)\b/.test(t);
+  const contexto = sessao.instituicao === "unifatecie" || String(sessao.assuntoAtual || "").toLowerCase().includes("unifatecie");
+  return explicita || (contexto && pedidoExplicitoDeCurso(t, sessao));
 }
 
 function marcarUni(sessao = {}, curso = null) {
@@ -172,16 +197,21 @@ async function responderQuantidade({ client, msg, responder }) {
 }
 
 async function responderCurso({ client, msg, textoOriginal, sessao, responder }) {
+  const t = norm(textoOriginal);
+
+  // Proteção: busca de curso só acontece quando a pessoa realmente falou de curso/graduação
+  // ou está perguntando detalhes do curso que já estava em contexto.
+  if (!pedidoExplicitoDeCurso(t, sessao)) return false;
+
   let encontrados = await Catalogo.buscar(textoOriginal, 10);
 
-  if (!encontrados.length && sessao?.cursoAtual?.nome) {
+  if (!encontrados.length && perguntaDetalheDoCursoAtual(t, sessao)) {
     encontrados = await Catalogo.buscar(sessao.cursoAtual.nome, 10);
   }
   if (!encontrados.length) return false;
 
-  const t = norm(textoOriginal);
   const exato = encontrados.find(c => t.includes(norm(c.nome)));
-  const escolhido = exato || (encontrados.length === 1 ? encontrados[0] : null);
+  const escolhido = exato || (perguntaDetalheDoCursoAtual(t, sessao) ? encontrados.find(c => norm(c.nome) === norm(sessao.cursoAtual?.nome)) : null) || (encontrados.length === 1 ? encontrados[0] : null);
 
   if (escolhido) {
     marcarUni(sessao, escolhido);
@@ -189,8 +219,10 @@ async function responderCurso({ client, msg, textoOriginal, sessao, responder })
     return true;
   }
 
-  marcarUni(sessao);
+  // Só oferece alternativas quando a própria pessoa fez uma consulta acadêmica explícita.
   const top = encontrados.slice(0, 8);
+  if (!top.length) return false;
+  marcarUni(sessao);
   await responder(
     client,
     msg.from,
@@ -204,17 +236,14 @@ async function tentarPrioridade(args = {}) {
   if (!sessao || !msg || !textoOriginal || typeof responder !== "function") return false;
   const t = norm(textoOriginal);
 
-  // Comandos de controle nunca podem virar pesquisa de curso EAD.
   if (encerrarAtendimento(t)) {
     resetar(sessao);
     await responder(client, msg.from, "✅ Atendimento encerrado. Se precisar de algo depois, é só chamar. 😊");
     return true;
   }
 
-  // Durante coleta de dados, nenhum catálogo/IA deve sequestrar a resposta do campo atual.
   if (emFluxoEstruturado(sessao)) return false;
 
-  // Regra comercial da Shekinah EAD: o aluno faz tudo de casa.
   if (contextoShekinahEad(sessao) && perguntaSePrecisaIr(textoOriginal)) {
     sessao.instituicao = "shekinah";
     sessao.modalidadeShekinah = "ead";
@@ -227,11 +256,22 @@ async function tentarPrioridade(args = {}) {
     return true;
   }
 
-  if (!intencaoUniFatecie(textoOriginal, sessao)) return false;
-  marcarUni(sessao);
+  // Regra principal: suporte/financeiro nunca pode virar recomendação de curso por contexto antigo.
+  if (emContextoSuporte(sessao) && !pedidoExplicitoDeCurso(t, sessao)) return false;
+  if (mensagemFinanceiraOuSuporte(t) && !pedidoExplicitoDeCurso(t, sessao)) return false;
 
-  if (pedidoQuantidade(t)) return responderQuantidade({ client, msg, responder });
-  if (pedidoLista(t)) return enviarListaCompleta({ client, msg, responder, segunda: pediuSegundaGraduacao(t) });
+  if (!intencaoUniFatecie(textoOriginal, sessao)) return false;
+
+  if (pedidoQuantidade(t)) {
+    marcarUni(sessao);
+    return responderQuantidade({ client, msg, responder });
+  }
+  if (pedidoLista(t)) {
+    marcarUni(sessao);
+    return enviarListaCompleta({ client, msg, responder, segunda: pediuSegundaGraduacao(t) });
+  }
+
+  if (!pedidoExplicitoDeCurso(t, sessao)) return false;
   if (await responderCurso({ client, msg, textoOriginal, sessao, responder })) return true;
 
   return false;
@@ -253,7 +293,6 @@ Module._load = function (request, parent, isMain) {
   return exp;
 };
 
-// Pré-carrega o catálogo em segundo plano; se o site estiver fora, usa o último cache local.
 Catalogo.aquecer();
 
 function selfTest() {
@@ -262,9 +301,19 @@ function selfTest() {
   assert.equal(perguntaSePrecisaIr("Tenho que ir na instituição?"), true);
   assert.equal(intencaoUniFatecie("Qual o valor de Engenharia de Software?", { instituicao: "unifatecie" }), true);
   assert.equal(pedidoLista("mostra todos os cursos de graduação"), true);
+  assert.equal(pedidoExplicitoDeCurso("Eu paguei uma mensalidade mas ela continua aberta pra eu pagar", { instituicao: "unifatecie" }), false);
+  assert.equal(mensagemFinanceiraOuSuporte(norm("Eu paguei uma mensalidade mas ela continua aberta pra eu pagar")), true);
+  assert.equal(pedidoExplicitoDeCurso("Qual o valor de Pedagogia?", { instituicao: "unifatecie" }), true);
   console.log("✅ Self-test do roteador prioritário aprovado.");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
 
-module.exports = { tentarPrioridade, perguntaSePrecisaIr, intencaoUniFatecie, pedidoLista };
+module.exports = {
+  tentarPrioridade,
+  perguntaSePrecisaIr,
+  intencaoUniFatecie,
+  pedidoLista,
+  pedidoExplicitoDeCurso,
+  mensagemFinanceiraOuSuporte,
+};
