@@ -96,7 +96,7 @@ async function tratarPortal({ client, msg, textoOriginal, sessao, responder }) {
     await responder(
       client,
       msg.from,
-      "Certo. *Portal é somente o da UniFatecie.* A Shekinah não possui portal próprio. Me diga o que está acontecendo no portal da UniFatecie ou envie um print do erro. 😊"
+      "Certo. Me diga o que está acontecendo no portal da *UniFatecie* ou, se preferir, envie um print do erro. 😊"
     );
     return true;
   }
@@ -135,7 +135,7 @@ async function tratarPortal({ client, msg, textoOriginal, sessao, responder }) {
   await responder(
     client,
     msg.from,
-    "Claro. Como você falou em *portal*, já sei que é da *UniFatecie*. A Shekinah não possui portal próprio.\n\nMe diga o que está acontecendo no portal da UniFatecie ou, se preferir, envie um print do erro. 😊"
+    "Claro. Me diga o que está acontecendo no portal da *UniFatecie* ou, se preferir, envie um print do erro. 😊"
   );
   return true;
 }
