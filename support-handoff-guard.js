@@ -6,6 +6,7 @@ function norm(texto = "") {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[!?.,;:()]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -36,6 +37,40 @@ function identificadorContato(msg = {}) {
     if (texto) return texto.replace(/@c\.us$|@lid$/i, "");
   }
   return "não identificado";
+}
+
+function pediuEncerrarSuporte(texto = "") {
+  const t = norm(texto);
+  if (!t) return false;
+
+  // Evita interpretar a negação literal como pedido de encerramento.
+  if (/\bnao quero (encerrar|finalizar|parar|sair)\b/.test(t)) return false;
+
+  if (/^(encerrar|encerrar atendimento|finalizar|finalizar atendimento|parar|parar atendimento|sair|sair do atendimento|fim)$/.test(t)) return true;
+  if (/\b(quero|pode|pode sim|favor|por favor)\b.*\b(encerrar|finalizar|parar|sair)\b/.test(t)) return true;
+  if (/\b(encerrar|finalizar)\b.*\batendimento\b/.test(t)) return true;
+  if (/\bnao quero mais\b/.test(t)) return true;
+  return false;
+}
+
+function resetarSuporte(sessao = {}) {
+  Object.assign(sessao, {
+    etapa: "escolher_instituicao",
+    instituicao: null,
+    atendimentoHumano: false,
+    assuntoAtual: null,
+    acaoPendente: null,
+    curso: "",
+    cursoAtual: null,
+    modalidadeShekinah: null,
+    eadCursoAtual: null,
+    eadUltimaLista: null,
+    eadPagina: 0,
+    historicoIA: [],
+    pausaHumanaIniciadaEm: null,
+    ultimaMensagemHumanoEm: null,
+    atualizadoEm: Date.now()
+  });
 }
 
 function pareceDadosFinanceiros(texto = "") {
@@ -95,11 +130,22 @@ async function tentarEncaminharSuporte(args = {}) {
   if (!sessao || !msg || typeof responder !== "function") return false;
   if (sessao.assuntoAtual !== "suporte_pagamento_unifatecie") return false;
 
+  // Comando de saída tem prioridade absoluta sobre a coleta de dados.
+  if (pediuEncerrarSuporte(textoOriginal)) {
+    resetarSuporte(sessao);
+    await responder(
+      client,
+      msg.from,
+      "✅ *Atendimento encerrado.* Não precisa enviar mais nenhum dado. Se precisar de outra coisa depois, é só me chamar. 😊"
+    );
+    return true;
+  }
+
   if (!pareceDadosFinanceiros(textoOriginal)) {
     await responder(
       client,
       msg.from,
-      "Pode me enviar as informações que você tiver: *RA, CPF, data aproximada do pagamento e valor pago*. Se não souber a data exata, tudo bem. Assim que você mandar os dados, eu passo as informações para o atendente conferir e resolver. 👨‍💼"
+      "Pode me enviar as informações que você tiver: *RA, CPF, data aproximada do pagamento e valor pago*. Se não souber a data exata, tudo bem. Assim que você mandar os dados, eu passo as informações para o atendente conferir e resolver. 👨‍💼\n\nSe não quiser continuar, é só dizer *encerrar atendimento*."
     );
     return true;
   }
@@ -139,9 +185,13 @@ function selfTest() {
   assert.equal(pareceDadosFinanceiros("278732, 07792688224, eu não sei o dia exato, paguei 112, 20"), true);
   assert.equal(pareceDadosFinanceiros("não sei a data exata"), false);
   assert.equal(pareceDadosFinanceiros("meu RA é 278732 e paguei 112,20"), true);
+  assert.equal(pediuEncerrarSuporte("Encerrar"), true);
+  assert.equal(pediuEncerrarSuporte("Encerrar atendimento"), true);
+  assert.equal(pediuEncerrarSuporte("Em encerrar atendimento, não quero mais"), true);
+  assert.equal(pediuEncerrarSuporte("não quero encerrar"), false);
   console.log("✅ Self-test do encaminhamento financeiro aprovado.");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
 
-module.exports = { pareceDadosFinanceiros, tentarEncaminharSuporte };
+module.exports = { pareceDadosFinanceiros, pediuEncerrarSuporte, tentarEncaminharSuporte };
