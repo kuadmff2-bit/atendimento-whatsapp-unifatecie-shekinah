@@ -8,8 +8,7 @@ function norm(s = "") {
     .trim();
 }
 
-// Palavras que expressam intenção/conversa, mas não dizem QUAL curso/área a pessoa procura.
-// Elas não devem virar termo de busca no catálogo.
+// Palavras de conversa que não identificam uma área específica.
 const STOP = new Set([
   "tem","tenho","ter","curso","cursos","de","da","do","das","dos","um","uma","uns","umas","o","a","os","as","e","ou","pra","para","por","com","sobre",
   "eu","me","meu","minha","quero","queria","gostaria","preciso","saber","ver","conhecer","mostra","mostrar","mostre","mostreme","fala","falar","diz","dizer",
@@ -18,6 +17,14 @@ const STOP = new Set([
 ]);
 
 const CONCEITOS = [
+  {
+    nome: "apoio_educacional",
+    gatilhos: [
+      "apoio","curso de apoio","cursos de apoio","apoio escolar","apoio pedagogico",
+      "reforco","reforco escolar","pedagogico","educacao","ensino","aprendizagem"
+    ],
+    prioridades: ["Supervisão Pedagógica","Auxiliar de Creche","Educação Especial","Reforço Escolar"]
+  },
   {
     nome: "jogos",
     gatilhos: ["jogo","jogos","game","games","gamedev","desenvolver jogos","criar jogos","fazer jogos","programar jogos"],
@@ -136,7 +143,7 @@ function recomendar(cursos = [], texto = "", limite = 8) {
     for (const nome of conceito.prioridades) {
       const curso = mapa.get(norm(nome));
       if (curso && !vistos.has(norm(curso.nome))) {
-        selecionados.push({ curso, score: 300 - selecionados.length });
+        selecionados.push({ curso, score: 500 - selecionados.length });
         vistos.add(norm(curso.nome));
       }
     }
@@ -174,8 +181,6 @@ function ehPedidoCatalogo(texto = "") {
   const t = norm(texto);
   if (!t) return false;
 
-  // Se a pessoa falou de cursos/opções/catálogo mas NÃO informou uma área ou curso específico,
-  // a intenção é navegar pelo catálogo. Ex.: “quero saber dos cursos”, “me mostra as opções”.
   if (mencionaCatalogoOuCursos(t) && tokens(t).length === 0) return true;
 
   return /^(opcoes|as opcoes|cursos|os cursos|catalogo|lista de cursos)$/.test(t)
@@ -197,24 +202,21 @@ function emFluxoObrigatorio(sessao = {}) {
 function parecePedidoPorObjetivo(texto = "") {
   const t = norm(texto);
 
-  // Pedido genérico de catálogo não é recomendação por objetivo.
   if (ehPedidoCatalogo(t)) return false;
   if (detectarConceitos(t).length) return true;
-
-  // Só tenta recomendar quando sobrou algum termo realmente específico.
   if (!tokens(t).length) return false;
 
-  return /\b(curso|cursos|aprender|trabalhar|mexer|fazer|criar|desenvolver|programar|editar|consertar|montar)\b/.test(t)
-    && /\b(pra|para|quero|queria|gostaria|aprender|trabalhar|criar|desenvolver|programar|editar|consertar|montar)\b/.test(t);
+  return /\b(curso|cursos|aprender|trabalhar|mexer|fazer|criar|desenvolver|programar|editar|consertar|montar|apoio|reforco)\b/.test(t)
+    && /\b(pra|para|quero|queria|gostaria|aprender|trabalhar|criar|desenvolver|programar|editar|consertar|montar|apoio|reforco)\b/.test(t);
 }
 
 function respostaRecomendacoes(cursos = [], texto = "") {
   if (!cursos.length) return null;
   if (cursos.length === 1) {
-    return `✅ Sim. O curso que mais combina com o que você procura é *${cursos[0].nome}*.\n\nSe quiser, eu mostro os detalhes, conteúdo e quantidade de aulas. 📚`;
+    return `✅ O curso EAD que mais combina com o que você procura é *${cursos[0].nome}*.\n\nSe quiser, eu mostro os detalhes, conteúdo e quantidade de aulas. 📚`;
   }
   const linhas = cursos.map((c, i) => `${i + 1}. ${c.nome}`).join("\n");
-  return `✅ Para o que você quer fazer, estas são as opções EAD mais relacionadas que encontrei na Shekinah:\n\n${linhas}\n\nDiga o nome ou número e eu mostro os detalhes. 📚`;
+  return `✅ Para o que você procura, estas são as opções EAD mais relacionadas da Shekinah:\n\n${linhas}\n\nDiga o nome ou número e eu mostro os detalhes. 📚`;
 }
 
 function respostaPareceFalhaDeBusca(resposta = "") {
