@@ -1,7 +1,7 @@
 FROM node:22-bookworm-slim
 
 ENV NODE_ENV=production \
-    TZ=America/ManaUS \
+    TZ=America/Manaus \
     CHROME_PATH=/usr/bin/chromium \
     PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
