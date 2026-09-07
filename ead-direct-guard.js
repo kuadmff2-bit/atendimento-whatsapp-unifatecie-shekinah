@@ -52,6 +52,22 @@ function pedeShekinahPorNatureza(texto = "") {
   return /\bshekinah\b|\bcurso(s)? livre(s)?\b|\bprofissionalizante(s)?\b|\bqualificacao\b|\bapoio\b/.test(t);
 }
 
+function ehPedidoProfissionalizanteShekinah(texto = "") {
+  const t = norm(texto);
+  if (!t) return false;
+
+  if (/\bnao\s+(quero|procuro|busco|tenho interesse).{0,35}\b(profis[a-z]*|curso(s)? livre(s)?|qualificacao)\b/.test(t)) {
+    return false;
+  }
+
+  return (
+    /\bcurso(s)? livre(s)?\b/.test(t) ||
+    /\bqualificacao(oes)?\b/.test(t) ||
+    /\bprofissionalizante(s)?\b/.test(t) ||
+    /\bprofis[a-z]{4,}\b/.test(t)
+  );
+}
+
 function pedeUniFatecieExplicito(texto = "") {
   const t = normalizarEad(texto);
   return /\bunifatecie\b|\bfatecie\b|\bfaculdade\b|\bgraduacao\b|\bcurso superior\b|\bbacharelado\b|\blicenciatura\b|\btecnologo\b/.test(t);
@@ -77,8 +93,9 @@ function consultaGenericaDeExistenciaEad(texto = "") {
 
 function escopoEad(texto = "", sessao = {}) {
   if (pedeUniFatecieExplicito(texto)) return "unifatecie";
-  if (pedeShekinahPorNatureza(texto)) return "shekinah";
-  if (sessao?.modalidadeShekinah === "ead" || norm(sessao?.assuntoAtual).includes("shekinah_ead")) return "shekinah";
+  if (pedeShekinahPorNatureza(texto) || ehPedidoProfissionalizanteShekinah(texto)) return "shekinah";
+  const assunto = norm(sessao?.assuntoAtual);
+  if (sessao?.modalidadeShekinah === "ead" || assunto.includes("shekinah_ead") || assunto.includes("shekinah_modalidade")) return "shekinah";
   if (sessao?.instituicao === "shekinah") return "shekinah";
   if (sessao?.instituicao === "unifatecie") return "unifatecie";
   return "ambiguo";
@@ -87,6 +104,15 @@ function escopoEad(texto = "", sessao = {}) {
 function marcarEscolhaEadPendente(sessao = {}) {
   sessao.assuntoAtual = "escolha_instituicao_ead";
   sessao.modalidadeShekinah = null;
+  sessao.cursoAtual = null;
+  sessao.eadCursoAtual = null;
+  sessao.atualizadoEm = Date.now();
+}
+
+function marcarShekinahModalidadePendente(sessao = {}) {
+  sessao.instituicao = "shekinah";
+  sessao.modalidadeShekinah = null;
+  sessao.assuntoAtual = "shekinah_modalidade_pendente";
   sessao.cursoAtual = null;
   sessao.eadCursoAtual = null;
   sessao.atualizadoEm = Date.now();
@@ -165,9 +191,23 @@ async function perguntarInstituicaoEad({ client, msg, sessao, responder }) {
   return true;
 }
 
+async function perguntarModalidadeShekinah({ client, msg, sessao, responder }) {
+  marcarShekinahModalidadePendente(sessao);
+  await responder(
+    client,
+    msg.from,
+    "📚 Entendi. Você procura *cursos livres/profissionalizantes da Shekinah*. 😊\n\nTemos opções *presenciais* e *EAD*. Qual modalidade você prefere?"
+  );
+  return true;
+}
+
 async function tentarEadDireto(args = {}) {
   const { client, msg, textoOriginal, sessao, responder } = args;
   if (!sessao || !msg || typeof responder !== "function") return false;
+
+  if (ehPedidoProfissionalizanteShekinah(textoOriginal) && !ehEadExplicito(textoOriginal)) {
+    return perguntarModalidadeShekinah({ client, msg, sessao, responder });
+  }
 
   if (rejeitaGraduacao(textoOriginal)) {
     return responderEadShekinah({
@@ -235,10 +275,14 @@ function selfTest() {
   assert.equal(escopoEad("cursos de apoio em E A D", { instituicao: "unifatecie" }), "shekinah");
   assert.equal(escopoEad("graduação EAD", { instituicao: "shekinah" }), "unifatecie");
   assert.equal(escopoEad("EAD", { instituicao: "shekinah" }), "shekinah");
+  assert.equal(escopoEad("EAD", { instituicao: "unifatecie", assuntoAtual: "shekinah_modalidade_pendente" }), "shekinah");
   assert.equal(consultaGenericaDeExistenciaEad("Tem curso EAD?"), true);
   assert.equal(consultaGenericaDeExistenciaEad("EAD"), false);
   assert.equal(rejeitaGraduacao("Não quero de graduação"), true);
   assert.equal(rejeitaGraduacao("Quero graduação"), false);
+  assert.equal(ehPedidoProfissionalizanteShekinah("Não, profisiolisantes"), true);
+  assert.equal(ehPedidoProfissionalizanteShekinah("Quero profissionalizantes"), true);
+  assert.equal(ehPedidoProfissionalizanteShekinah("Não quero profissionalizantes"), false);
   assert.equal(escolhaInstituicaoEad("Shekinah", { assuntoAtual: "escolha_instituicao_ead" }), "shekinah");
   assert.equal(escolhaInstituicaoEad("UniFatecie", { assuntoAtual: "escolha_instituicao_ead" }), "unifatecie");
   console.log("✅ Self-test do roteamento EAD aprovado.");
@@ -250,6 +294,7 @@ module.exports = {
   normalizarEad,
   ehEadExplicito,
   ehPedidoGenericoEad,
+  ehPedidoProfissionalizanteShekinah,
   rejeitaGraduacao,
   consultaGenericaDeExistenciaEad,
   escopoEad,
