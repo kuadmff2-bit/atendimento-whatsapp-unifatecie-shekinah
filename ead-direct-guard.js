@@ -57,6 +57,24 @@ function pedeUniFatecieExplicito(texto = "") {
   return /\bunifatecie\b|\bfatecie\b|\bfaculdade\b|\bgraduacao\b|\bcurso superior\b|\bbacharelado\b|\blicenciatura\b|\btecnologo\b/.test(t);
 }
 
+function rejeitaGraduacao(texto = "") {
+  const t = norm(texto);
+  return (
+    /\bnao\s+(quero|procuro|busco|tenho interesse).{0,30}\bgraduacao\b/.test(t) ||
+    /\bnao\s+quero\s+de\s+graduacao\b/.test(t) ||
+    /\bnao\s+e\s+graduacao\b/.test(t) ||
+    /\bsem\s+graduacao\b/.test(t) ||
+    /\b(alguma coisa|algo|curso).{0,25}\bque nao seja graduacao\b/.test(t)
+  );
+}
+
+function consultaGenericaDeExistenciaEad(texto = "") {
+  const t = normalizarEad(texto);
+  if (!ehPedidoGenericoEad(t)) return false;
+  if (pedeShekinahPorNatureza(t) || pedeUniFatecieExplicito(t)) return false;
+  return /\b(tem|temos|ha|existe|quais|opcoes|catalogo|cursos)\b/.test(t);
+}
+
 function escopoEad(texto = "", sessao = {}) {
   if (pedeUniFatecieExplicito(texto)) return "unifatecie";
   if (pedeShekinahPorNatureza(texto)) return "shekinah";
@@ -96,7 +114,7 @@ function marcarShekinahEad(sessao = {}) {
   sessao.atualizadoEm = Date.now();
 }
 
-async function responderEadShekinah({ client, msg, sessao, responder }) {
+async function responderEadShekinah({ client, msg, sessao, responder, prefixo = "" }) {
   marcarShekinahEad(sessao);
 
   try {
@@ -105,7 +123,7 @@ async function responderEadShekinah({ client, msg, sessao, responder }) {
       await responder(
         client,
         msg.from,
-        `${lista}\n\n💰 *Todos os cursos EAD da Shekinah:* R$ 300,00 à vista ou 2x de R$ 160,00.\n🎁 À vista, o aluno ganha +2 cursos EAD de sua escolha.`
+        `${prefixo}${lista}\n\n💰 *Todos os cursos EAD da Shekinah:* R$ 300,00 à vista ou 2x de R$ 160,00.\n🎁 À vista, o aluno ganha +2 cursos EAD de sua escolha.`
       );
       return true;
     }
@@ -116,7 +134,7 @@ async function responderEadShekinah({ client, msg, sessao, responder }) {
   await responder(
     client,
     msg.from,
-    "💻 Sim. A *Shekinah oferece cursos EAD*. 😊\n\nO catálogo está temporariamente indisponível para listagem, mas a modalidade EAD está ativa. O valor é *R$ 300 à vista* ou *2x de R$ 160*; à vista, ganha *+2 cursos EAD* de brinde."
+    `${prefixo}💻 Sim. A *Shekinah oferece cursos EAD*. 😊\n\nO catálogo está temporariamente indisponível para listagem, mas a modalidade EAD está ativa. O valor é *R$ 300 à vista* ou *2x de R$ 160*; à vista, ganha *+2 cursos EAD* de brinde.`
   );
   return true;
 }
@@ -137,9 +155,29 @@ async function responderEadUniFatecie({ client, msg, sessao, responder }) {
   return true;
 }
 
+async function perguntarInstituicaoEad({ client, msg, sessao, responder }) {
+  marcarEscolhaEadPendente(sessao);
+  await responder(
+    client,
+    msg.from,
+    "💻 Temos EAD nas duas instituições. 😊\n\n🎓 *UniFatecie:* cursos de graduação EAD.\n📚 *Shekinah:* cursos livres EAD.\n\nQual dos dois você quer ver?"
+  );
+  return true;
+}
+
 async function tentarEadDireto(args = {}) {
   const { client, msg, textoOriginal, sessao, responder } = args;
   if (!sessao || !msg || typeof responder !== "function") return false;
+
+  if (rejeitaGraduacao(textoOriginal)) {
+    return responderEadShekinah({
+      client,
+      msg,
+      sessao,
+      responder,
+      prefixo: "Entendi. E só para não confundir: *curso tecnólogo também é graduação*. ✅\n\nComo você não quer graduação, vou te mostrar os *cursos livres EAD da Shekinah*.\n\n",
+    });
+  }
 
   const escolhaPendente = escolhaInstituicaoEad(textoOriginal, sessao);
   if (escolhaPendente === "shekinah") {
@@ -151,6 +189,10 @@ async function tentarEadDireto(args = {}) {
 
   if (!ehEadExplicito(textoOriginal) || !ehPedidoGenericoEad(textoOriginal)) return false;
 
+  if (consultaGenericaDeExistenciaEad(textoOriginal)) {
+    return perguntarInstituicaoEad({ client, msg, sessao, responder });
+  }
+
   const escopo = escopoEad(textoOriginal, sessao);
 
   if (escopo === "unifatecie") {
@@ -161,13 +203,7 @@ async function tentarEadDireto(args = {}) {
     return responderEadShekinah({ client, msg, sessao, responder });
   }
 
-  marcarEscolhaEadPendente(sessao);
-  await responder(
-    client,
-    msg.from,
-    "💻 Temos EAD nas duas instituições. 😊\n\n🎓 *UniFatecie:* cursos de graduação EAD.\n📚 *Shekinah:* cursos livres EAD.\n\nQual dos dois você quer ver?"
-  );
-  return true;
+  return perguntarInstituicaoEad({ client, msg, sessao, responder });
 }
 
 Module._load = function (request, parent, isMain) {
@@ -199,6 +235,10 @@ function selfTest() {
   assert.equal(escopoEad("cursos de apoio em E A D", { instituicao: "unifatecie" }), "shekinah");
   assert.equal(escopoEad("graduação EAD", { instituicao: "shekinah" }), "unifatecie");
   assert.equal(escopoEad("EAD", { instituicao: "shekinah" }), "shekinah");
+  assert.equal(consultaGenericaDeExistenciaEad("Tem curso EAD?"), true);
+  assert.equal(consultaGenericaDeExistenciaEad("EAD"), false);
+  assert.equal(rejeitaGraduacao("Não quero de graduação"), true);
+  assert.equal(rejeitaGraduacao("Quero graduação"), false);
   assert.equal(escolhaInstituicaoEad("Shekinah", { assuntoAtual: "escolha_instituicao_ead" }), "shekinah");
   assert.equal(escolhaInstituicaoEad("UniFatecie", { assuntoAtual: "escolha_instituicao_ead" }), "unifatecie");
   console.log("✅ Self-test do roteamento EAD aprovado.");
@@ -210,6 +250,8 @@ module.exports = {
   normalizarEad,
   ehEadExplicito,
   ehPedidoGenericoEad,
+  rejeitaGraduacao,
+  consultaGenericaDeExistenciaEad,
   escopoEad,
   escolhaInstituicaoEad,
   tentarEadDireto,
