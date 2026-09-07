@@ -138,11 +138,18 @@ function selfTest() {
   assert.equal(ehMais("mais"), true);
   assert.equal(ehMais("mais*"), true);
   assert.equal(ehMais("ver mais"), true);
-  const teste = formatarPagina([
-    { nome: "Administração", habilitacao: "Bacharelado", duracao: "3 anos", valor: "R$ 112,20/mês" },
-    { nome: "ADS", habilitacao: "Tecnólogo", duracao: "2 anos", valor: "R$ 112,20/mês" }
-  ], 0);
-  assert.ok(teste.texto.includes("mande apenas *mais*"));
+
+  const amostra = Array.from({ length: TAMANHO_PAGINA + 1 }, (_, i) => ({
+    nome: `Curso ${i + 1}`,
+    habilitacao: "Tecnólogo",
+    duracao: "2 anos",
+    valor: "R$ 112,20/mês",
+  }));
+  const primeira = formatarPagina(amostra, 0);
+  const ultima = formatarPagina(amostra, 1);
+  assert.ok(primeira.texto.includes("mande apenas *mais*"));
+  assert.ok(ultima.texto.includes("última parte"));
+  assert.equal(primeira.totalPaginas, 2);
   console.log("✅ Self-test da paginação de cursos UniFatecie aprovado.");
 }
 
