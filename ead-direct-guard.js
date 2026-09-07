@@ -66,6 +66,27 @@ function escopoEad(texto = "", sessao = {}) {
   return "ambiguo";
 }
 
+function marcarEscolhaEadPendente(sessao = {}) {
+  sessao.assuntoAtual = "escolha_instituicao_ead";
+  sessao.modalidadeShekinah = null;
+  sessao.cursoAtual = null;
+  sessao.eadCursoAtual = null;
+  sessao.atualizadoEm = Date.now();
+}
+
+function escolhaInstituicaoEad(texto = "", sessao = {}) {
+  if (norm(sessao?.assuntoAtual) !== "escolha_instituicao_ead") return "";
+  const t = normalizarEad(texto);
+
+  if (/^(shekinah|centro educacional shekinah|shekinah ead|cursos livres|curso livre)$/.test(t)) {
+    return "shekinah";
+  }
+  if (/^(unifatecie|fatecie|faculdade|unifatecie ead|graduacao|graduacao ead)$/.test(t)) {
+    return "unifatecie";
+  }
+  return "";
+}
+
 function marcarShekinahEad(sessao = {}) {
   sessao.instituicao = "shekinah";
   sessao.modalidadeShekinah = "ead";
@@ -100,22 +121,47 @@ async function responderEadShekinah({ client, msg, sessao, responder }) {
   return true;
 }
 
+async function responderEadUniFatecie({ client, msg, sessao, responder }) {
+  sessao.instituicao = "unifatecie";
+  sessao.modalidadeShekinah = null;
+  sessao.assuntoAtual = "unifatecie_ead";
+  sessao.cursoAtual = null;
+  sessao.eadCursoAtual = null;
+  sessao.atualizadoEm = Date.now();
+
+  await responder(
+    client,
+    msg.from,
+    "🎓 Certo! Você escolheu a *UniFatecie*. Temos cursos de graduação EAD. 😊\n\nQual curso você procura?"
+  );
+  return true;
+}
+
 async function tentarEadDireto(args = {}) {
   const { client, msg, textoOriginal, sessao, responder } = args;
   if (!sessao || !msg || typeof responder !== "function") return false;
+
+  const escolhaPendente = escolhaInstituicaoEad(textoOriginal, sessao);
+  if (escolhaPendente === "shekinah") {
+    return responderEadShekinah({ client, msg, sessao, responder });
+  }
+  if (escolhaPendente === "unifatecie") {
+    return responderEadUniFatecie({ client, msg, sessao, responder });
+  }
+
   if (!ehEadExplicito(textoOriginal) || !ehPedidoGenericoEad(textoOriginal)) return false;
 
   const escopo = escopoEad(textoOriginal, sessao);
 
   if (escopo === "unifatecie") {
-    // Deixa o roteador da UniFatecie responder quando o pedido é explicitamente de graduação/faculdade.
-    return false;
+    return responderEadUniFatecie({ client, msg, sessao, responder });
   }
 
   if (escopo === "shekinah") {
     return responderEadShekinah({ client, msg, sessao, responder });
   }
 
+  marcarEscolhaEadPendente(sessao);
   await responder(
     client,
     msg.from,
@@ -153,6 +199,8 @@ function selfTest() {
   assert.equal(escopoEad("cursos de apoio em E A D", { instituicao: "unifatecie" }), "shekinah");
   assert.equal(escopoEad("graduação EAD", { instituicao: "shekinah" }), "unifatecie");
   assert.equal(escopoEad("EAD", { instituicao: "shekinah" }), "shekinah");
+  assert.equal(escolhaInstituicaoEad("Shekinah", { assuntoAtual: "escolha_instituicao_ead" }), "shekinah");
+  assert.equal(escolhaInstituicaoEad("UniFatecie", { assuntoAtual: "escolha_instituicao_ead" }), "unifatecie");
   console.log("✅ Self-test do roteamento EAD aprovado.");
 }
 
@@ -163,5 +211,6 @@ module.exports = {
   ehEadExplicito,
   ehPedidoGenericoEad,
   escopoEad,
+  escolhaInstituicaoEad,
   tentarEadDireto,
 };
