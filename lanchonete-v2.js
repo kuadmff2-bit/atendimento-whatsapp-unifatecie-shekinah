@@ -20,6 +20,7 @@ let state = 'starting';
 let lastError = '';
 let retry = null;
 let starting = false;
+const processedMessages = new Map();
 
 fs.mkdirSync(TOKEN_DIR, { recursive: true });
 
@@ -67,7 +68,7 @@ http.createServer = function patchedCreateServer(listener) {
 };
 
 function phoneOf(msg) {
-  for (const value of [msg?.sender?.id?.user, msg?.sender?.id?._serialized, msg?.from].filter(Boolean)) {
+  for (const value of [msg?.sender?.id?.user, msg?.sender?.id?._serialized, msg?.from, msg?.author].filter(Boolean)) {
     let digits = String(value).split('@')[0].replace(/\D/g, '');
     if (digits.length === 10 || digits.length === 11) digits = `55${digits}`;
     if (/^55\d{10,11}$/.test(digits)) return digits;
@@ -75,34 +76,96 @@ function phoneOf(msg) {
   return '';
 }
 
-function ignore(msg) {
-  const from = String(msg?.from || '');
-  return !from || !!msg?.fromMe || !!msg?.isGroupMsg || from.endsWith('@g.us') || from === 'status@broadcast' || from.endsWith('@broadcast');
+function textOf(msg) {
+  for (const value of [msg?.body, msg?.caption, msg?.content, msg?.text]) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
 }
 
-async function onMessage(msg) {
-  if (!client || ignore(msg)) return;
-  const message = String(msg?.body || '').trim();
-  if (!message) return;
+function messageIdOf(msg) {
+  const direct = msg?.id?._serialized || msg?.id?.id || msg?.key?.id || msg?.messageId;
+  if (direct) return String(direct);
+  const from = String(msg?.from || msg?.author || 'unknown');
+  const stamp = String(msg?.timestamp || msg?.t || '0');
+  return `${from}:${stamp}:${textOf(msg).slice(0, 120)}`;
+}
+
+function seenRecently(id) {
+  const now = Date.now();
+  for (const [key, ts] of processedMessages) {
+    if (now - ts > 10 * 60 * 1000) processedMessages.delete(key);
+  }
+  if (processedMessages.has(id)) return true;
+  processedMessages.set(id, now);
+  return false;
+}
+
+function shouldIgnore(msg, message) {
+  const from = String(msg?.from || '');
+  if (!from || !message) return true;
+  if (msg?.fromMe === true) return true;
+  if (msg?.isGroupMsg === true || from.endsWith('@g.us')) return true;
+  if (from === 'status@broadcast' || from.endsWith('@broadcast')) return true;
+  return false;
+}
+
+async function backendStatus() {
+  try {
+    const response = await fetch(`${API_BASE}/api/robot`, { headers: { 'cache-control': 'no-cache' } });
+    const data = await response.json().catch(() => ({}));
+    console.log(`🧠 Backend do robô: HTTP ${response.status} | enabled=${String(data?.enabled)} | storage=${String(data?.storageConfigured)}`);
+  } catch (error) {
+    console.error('❌ Não foi possível consultar o backend do robô:', error.message);
+  }
+}
+
+async function handleMessage(msg, source) {
+  const message = textOf(msg);
+  const from = String(msg?.from || '');
+  const fromMe = msg?.fromMe === true;
+  const group = msg?.isGroupMsg === true || from.endsWith('@g.us');
+  const id = messageIdOf(msg);
+
+  console.log(`📥 Lanchonete ${source}: from=${from || 'n/a'} fromMe=${fromMe} group=${group} texto=${JSON.stringify(message.slice(0, 80))}`);
+
+  if (shouldIgnore(msg, message)) return;
+  if (seenRecently(id)) return;
+  if (!client) return;
+
   try {
     const headers = { 'content-type': 'application/json' };
     if (API_TOKEN) headers['x-robot-token'] = API_TOKEN;
+
+    const payload = {
+      contactId: from || phoneOf(msg),
+      phone: phoneOf(msg),
+      message
+    };
+
     const response = await fetch(`${API_BASE}/api/robot/chat`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ contactId: String(msg.from || phoneOf(msg)), phone: phoneOf(msg), message })
+      body: JSON.stringify(payload)
     });
+
     const data = await response.json().catch(() => ({}));
+    console.log(`🧠 /api/robot/chat -> HTTP ${response.status} disabled=${String(data?.disabled)} state=${String(data?.state || 'n/a')}`);
+
     if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
     if (data?.disabled) {
       console.log('🍔 Mensagem recebida, mas o robô está desligado no painel.');
       return;
     }
+
     const replyText = String(data?.reply || '').trim();
-    if (replyText) {
-      await client.sendText(msg.from, replyText);
-      console.log(`🍔 Resposta enviada para ${phoneOf(msg) || msg.from}. Estado: ${data?.state || 'n/a'}`);
+    if (!replyText) {
+      console.log('⚠️ Backend respondeu sem texto para enviar ao cliente.');
+      return;
     }
+
+    await client.sendText(from, replyText);
+    console.log(`✅ Robô da lanchonete respondeu ${phoneOf(msg) || from}. Estado: ${data?.state || 'n/a'}`);
   } catch (error) {
     lastError = String(error?.message || error);
     console.error('❌ Robô da lanchonete ao responder:', lastError);
@@ -143,7 +206,7 @@ async function startSession() {
   lastError = '';
   try {
     removeLocks();
-    const puppeteerOptions = { timeout: 120000 };
+    const puppeteerOptions = { timeout: 120000, protocolTimeout: 180000 };
     if (fs.existsSync(CHROME_PATH)) puppeteerOptions.executablePath = CHROME_PATH;
     console.log('🍔 Iniciando segunda sessão WPPConnect da lanchonete...');
 
@@ -183,12 +246,20 @@ async function startSession() {
     state = 'inChat';
     qrImage = null;
     console.log('✅ WhatsApp da lanchonete conectado e escutando mensagens.');
-    client.onMessage(onMessage);
+
+    client.onMessage((msg) => handleMessage(msg, 'onMessage'));
+    if (typeof client.onAnyMessage === 'function') {
+      client.onAnyMessage((msg) => handleMessage(msg, 'onAnyMessage'));
+      console.log('🛟 Fallback onAnyMessage da lanchonete ativo.');
+    }
+
     client.onStateChange((s) => {
       state = String(s || 'unknown');
       console.log(`🔄 Sessão lanchonete: ${state}`);
       if (/UNPAIRED|CONFLICT|UNLAUNCHED|DISCONNECTED|NOT_LOGGED/i.test(state)) connected = false;
     });
+
+    await backendStatus();
   } catch (error) {
     lastError = String(error?.message || error);
     connected = false;
