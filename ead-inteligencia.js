@@ -13,12 +13,9 @@ const STOP = new Set([
   "eu","me","meu","minha","quero","queria","gostaria","preciso","saber","ver","conhecer","mostra","mostrar","mostre","mostreme","fala","falar","diz","dizer",
   "opcao","opcoes","lista","listar","catalogo","informacao","informacoes","detalhe","detalhes","disponivel","disponiveis","oferta","ofertas",
   "qual","quais","que","ead","online","shekinah","voces","voce","oferece","oferecem","algum","alguma","algo","area","nessa","nesta","isso","issoai","ai",
-  "outra","outras","outro","outros","mais","tambem","tambem"
+  "outra","outras","outro","outros","mais","tambem"
 ]);
 
-// Cada conceito tem gatilhos de linguagem natural e também sinais que podem existir
-// no nome/categoria/descrição REAL do catálogo. Assim o Light não precisa adivinhar
-// nomes de cursos: ele só recomenda cursos que realmente vieram da plataforma.
 const CONCEITOS = [
   {
     nome: "idiomas",
@@ -32,56 +29,64 @@ const CONCEITOS = [
     rotulo: "Informática e tecnologia",
     gatilhos: ["informatica","tecnologia","computador","computadores","pc","windows","office","digitar","digitacao","word","excel","power point","powerpoint"],
     categorias: ["informatica","tecnologia","informatica e tecnologia"],
-    termosCurso: ["informatica","windows","word","excel","power point","powerpoint","access","digitacao","linux","office"]
+    termosCurso: ["informatica","windows","word","excel","power point","powerpoint","access","digitacao","linux","office"],
+    prioridades: ["Introdução à Informática","Windows 11","Microsoft Word","Excel Básico e Avançado","Power Point","Digitação Interativa"]
   },
   {
     nome: "programacao",
     rotulo: "Programação e desenvolvimento",
     gatilhos: ["programacao","programar","codigo","codar","desenvolvedor","desenvolvimento de software","software","dev","frontend","backend","full stack"],
     categorias: ["informatica","tecnologia","informatica e tecnologia"],
-    termosCurso: ["logica de programacao","javascript","php","html","css","python","java","programacao","app android","android e ios","wordpress"]
+    termosCurso: ["logica de programacao","javascript","php","html","css","python","java","programacao","app android","android e ios","wordpress"],
+    prioridades: ["Lógica de Programação","JavaScript","PHP: Do Básico ao Avançado","HTML e CSS","Criação de App Android e iOS","Criação de Game Profissional"]
   },
   {
     nome: "sites",
     rotulo: "Sites e web",
     gatilhos: ["site","sites","website","pagina web","web","criar site","desenvolver site","loja virtual","ecommerce","e commerce","wordpress"],
     categorias: ["informatica","tecnologia","informatica e tecnologia"],
-    termosCurso: ["html","css","javascript","php","wordpress","site","loja virtual","web"]
+    termosCurso: ["html","css","javascript","php","wordpress","site","loja virtual","web"],
+    prioridades: ["HTML e CSS","JavaScript","PHP: Do Básico ao Avançado","Programação de sites Wordpress","WordPress V2","Criação de Loja Virtual"]
   },
   {
     nome: "apps",
     rotulo: "Aplicativos",
     gatilhos: ["aplicativo","aplicativos","app","apps","android","ios","criar aplicativo","desenvolver aplicativo"],
     categorias: ["informatica","tecnologia","informatica e tecnologia"],
-    termosCurso: ["app","android","ios","programacao","javascript"]
+    termosCurso: ["app","android","ios","programacao","javascript"],
+    prioridades: ["Criação de App Android e iOS","Lógica de Programação","JavaScript"]
   },
   {
     nome: "jogos",
     rotulo: "Jogos e games",
     gatilhos: ["jogo","jogos","game","games","gamedev","desenvolver jogos","criar jogos","fazer jogos","programar jogos"],
     categorias: ["informatica","tecnologia","informatica e tecnologia"],
-    termosCurso: ["game","jogo","blender","3d","logica de programacao","javascript"]
+    termosCurso: ["game","jogo","blender","3d","logica de programacao","javascript"],
+    prioridades: ["Criação de Game Profissional","Lógica de Programação","Blender 3D","3D Studio Max Básico","JavaScript"]
   },
   {
     nome: "design",
     rotulo: "Design e criação",
     gatilhos: ["design","arte digital","imagem","imagens","logo","logos","editar foto","foto","fotos","criacao grafica","artes graficas"],
     categorias: ["informatica","tecnologia","design","diversas areas"],
-    termosCurso: ["canva","photoshop","illustrator","corel","indesign","design","arte"]
+    termosCurso: ["canva","photoshop","illustrator","corel","indesign","design","arte"],
+    prioridades: ["Canva","PhotoShop CC","Illustrator 2022","Corel Draw X8","InDesign"]
   },
   {
     nome: "video",
     rotulo: "Vídeo e conteúdo digital",
     gatilhos: ["video","videos","editar video","edicao de video","motion","efeitos visuais","premiere","after effects"],
     categorias: ["informatica","tecnologia","diversas areas"],
-    termosCurso: ["premiere","after effects","video","youtuber","podcast"]
+    termosCurso: ["premiere","after effects","video","youtuber","podcast"],
+    prioridades: ["Edição de Vídeo Premiere","After Effects","Como ser um Youtuber","Operador de Podcast"]
   },
   {
     nome: "3d",
     rotulo: "3D, desenho técnico e projetos",
     gatilhos: ["3d","modelagem 3d","modelar","render","animacao 3d","autocad","sketchup"],
     categorias: ["informatica","tecnologia","diversas areas"],
-    termosCurso: ["blender","3d studio","sketchup","autocad","3d"]
+    termosCurso: ["blender","3d studio","sketchup","autocad","3d"],
+    prioridades: ["Blender 3D","3D Studio Max Básico","SketchUp","AutoCad 2D e 3D"]
   },
   {
     nome: "administrativo",
@@ -122,7 +127,7 @@ const CONCEITOS = [
     nome: "educacao",
     rotulo: "Educação e apoio escolar",
     gatilhos: ["apoio","curso de apoio","cursos de apoio","apoio escolar","apoio pedagogico","reforco","reforco escolar","pedagogico","educacao","ensino","aprendizagem","creche","auxiliar de classe","professor","escola"],
-    categorias: ["diversas areas","educacao","preparatorio","preparatorios"],
+    categorias: ["educacao","preparatorio","preparatorios","diversas areas"],
     termosCurso: ["pedagog","creche","educacao","reforco","auxiliar de classe","supervisao","escolar","professor"]
   },
   {
@@ -136,21 +141,21 @@ const CONCEITOS = [
     nome: "saude",
     rotulo: "Saúde e cuidados",
     gatilhos: ["saude","cuidador","idoso","cuidador de idoso","farmacia","atendente de farmacia","agente de saude","primeiros socorros","enfermagem","radiologia","hospital"],
-    categorias: ["diversas areas","saude"],
+    categorias: ["saude","diversas areas"],
     termosCurso: ["cuidador","idoso","farmacia","saude","primeiros socorros","radiologia","hospital","agente comunitario"]
   },
   {
     nome: "beleza",
     rotulo: "Beleza e estética",
     gatilhos: ["beleza","estetica","manicure","pedicure","maquiagem","cabelo","cabeleireiro","barbeiro","barbearia","sobrancelha","unha","unhas"],
-    categorias: ["diversas areas","beleza","estetica"],
+    categorias: ["beleza","estetica","diversas areas"],
     termosCurso: ["manicure","pedicure","maquiagem","cabeleireiro","barbeiro","sobrancelha","estetica","beleza","unha"]
   },
   {
     nome: "culinaria",
     rotulo: "Culinária e alimentos",
     gatilhos: ["culinaria","culinario","gastronomia","confeitaria","doces","salgados","panificacao","padeiro","bolo","bolos","pizzaiolo","barista","alimentos","cozinheiro","cozinha"],
-    categorias: ["diversas areas","culinaria","gastronomia"],
+    categorias: ["culinaria","gastronomia","diversas areas"],
     termosCurso: ["culinaria","gastronomia","confeitaria","bolo","salgado","panificacao","padeiro","pizzaiolo","barista","cozinheiro"]
   },
   {
@@ -178,7 +183,7 @@ const CONCEITOS = [
     nome: "seguranca_trabalho",
     rotulo: "Segurança e trabalho",
     gatilhos: ["seguranca do trabalho","epi","prevencao de acidentes","nr10","nr 10","nr35","nr 35","brigadista","bombeiro civil"],
-    categorias: ["diversas areas","seguranca"],
+    categorias: ["seguranca","diversas areas"],
     termosCurso: ["seguranca do trabalho","nr10","nr 10","nr35","nr 35","brigadista","bombeiro"]
   },
   {
@@ -270,7 +275,8 @@ function conceitoPontuaCurso(conceito, curso) {
 
   for (const cat of conceito.categorias || []) {
     const c = norm(cat);
-    if (c && categoria.includes(c)) score += 320;
+    if (!c || ["diversas areas", "outros", "geral"].includes(c)) continue;
+    if (categoria.includes(c)) score += 320;
   }
   for (const termo of conceito.termosCurso || []) {
     const q = norm(termo);
@@ -288,15 +294,14 @@ function recomendar(cursos = [], texto = "", limite = 12) {
   const selecionados = new Map();
   const conceitos = detectarConceitos(texto);
 
-  // Nomes prioritários quando existirem exatamente no catálogo.
   for (const conceito of conceitos) {
-    for (const nome of conceito.prioridades || []) {
+    const prioridades = conceito.prioridades || [];
+    prioridades.forEach((nome, indice) => {
       const curso = mapa.get(norm(nome));
-      if (curso) selecionados.set(norm(curso.nome), { curso, score: 1000 });
-    }
+      if (curso) selecionados.set(norm(curso.nome), { curso, score: 1600 - (indice * 80) });
+    });
   }
 
-  // Entendimento por área/categoria real da plataforma.
   for (const curso of cursos) {
     const chave = norm(curso?.nome);
     if (!chave) continue;
@@ -305,7 +310,6 @@ function recomendar(cursos = [], texto = "", limite = 12) {
     if (score > 0) selecionados.set(chave, { curso, score });
   }
 
-  // Similaridade lexical para pedidos livres, erros de digitação e nomes incompletos.
   const qTokens = tokens(texto);
   for (const curso of cursos) {
     const chave = norm(curso?.nome);
@@ -392,12 +396,15 @@ function selfTest() {
     { nome: "Operador de Caixa", categoriaLoja: "ADMINISTRATIVO" },
     { nome: "Excel Básico e Avançado", categoriaLoja: "INFORMÁTICA E TECNOLOGIA" },
     { nome: "Cuidador de Idoso", categoriaLoja: "DIVERSAS ÁREAS" },
+    { nome: "Criação de Game Profissional", categoriaLoja: "INFORMÁTICA E TECNOLOGIA" },
+    { nome: "Blender 3D", categoriaLoja: "INFORMÁTICA E TECNOLOGIA" },
   ];
   assert.equal(detectarConceitos("Idiomas")[0]?.nome, "idiomas");
   assert.equal(parecePedidoPorObjetivo("Idiomas"), true);
   assert.deepEqual(recomendar(catalogo, "Idiomas", 10).map(c => c.nome), ["Espanhol", "Inglês"]);
   assert.ok(recomendar(catalogo, "quero algo de informática", 10).some(c => c.nome === "Excel Básico e Avançado"));
   assert.ok(recomendar(catalogo, "saúde e cuidados", 10).some(c => c.nome === "Cuidador de Idoso"));
+  assert.equal(recomendar(catalogo, "quero desenvolver jogos", 10)[0]?.nome, "Criação de Game Profissional");
   console.log("✅ Self-test de inteligência EAD por áreas aprovado.");
 }
 
