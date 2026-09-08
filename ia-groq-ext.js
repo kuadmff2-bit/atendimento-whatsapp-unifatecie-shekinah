@@ -1,5 +1,6 @@
 const iaBase = require("./ia-groq");
 const SHEKINAH_INFO = require("./shekinah-info");
+const EAD = require("./shekinah-ead");
 const { contextoDinamicoIA } = require("./autonomia");
 
 function norm(texto = "") {
@@ -65,6 +66,7 @@ function enriquecerConfig(config = {}) {
     "- Primeira mensalidade UniFatecie: não inventar data. Depois do RA, consultar Financeiro/Ficha Financeira.",
     "- Nunca fingir que consultou CRM, Portal, Financeiro ou situação individual se não houve integração real.",
     "- Não repetir informação já respondida quando a pergunta é apenas continuação do mesmo assunto.",
+    "- Uma recomendação feita pelo Light vira contexto ativo. Se o usuário responder de forma curta, continue daquele curso/assunto em vez de perguntar tudo de novo.",
   ].join("\n");
 
   const dinamico = contextoDinamicoIA();
@@ -126,18 +128,137 @@ function corrigirFatosAntigosShekinah(resposta = "", args = {}) {
   return texto;
 }
 
+function extrairUltimaPergunta(texto = "") {
+  const bruto = String(texto || "").replace(/\s+/g, " ").trim();
+  if (!bruto.includes("?")) return "";
+  const partes = bruto.split("?").map(s => s.trim()).filter(Boolean);
+  return partes.length ? `${partes[partes.length - 1].slice(0, 480)}?` : "";
+}
+
+function nomesUni(args = {}) {
+  return Object.values(args.cursosUnifatecie || {})
+    .map(c => c?.nome)
+    .filter(Boolean);
+}
+
+function nomesShekinahPresencial() {
+  return (SHEKINAH_INFO.cursos || []).map(c => c?.nome).filter(Boolean);
+}
+
+function mencionados(texto = "", nomes = []) {
+  const t = norm(texto);
+  return nomes
+    .filter(Boolean)
+    .filter(nome => t.includes(norm(nome)))
+    .sort((a, b) => norm(b).length - norm(a).length);
+}
+
+function memoria(sessao = {}) {
+  if (!sessao.memoriaLight || typeof sessao.memoriaLight !== "object") sessao.memoriaLight = { versao: 2, recomendacoes: [], marcos: [] };
+  return sessao.memoriaLight;
+}
+
+function atualizarMemoriaResposta(sessao, resposta, textoOriginal = "") {
+  const m = memoria(sessao);
+  m.instituicao = sessao.instituicao || m.instituicao || null;
+  m.modalidade = sessao.modalidadeShekinah || m.modalidade || null;
+  m.cursoAtivo = sessao.eadCursoAtual || sessao.cursoAtual?.nome || sessao.curso || m.cursoAtivo || null;
+  m.assunto = sessao.assuntoAtual || m.assunto || null;
+  m.ultimaMensagemUsuario = String(textoOriginal || "").slice(0, 700);
+  m.ultimaRespostaBot = String(resposta || "").slice(0, 900);
+  const q = extrairUltimaPergunta(resposta);
+  if (q) m.ultimaPerguntaBot = q;
+  m.atualizadoEm = Date.now();
+  sessao.atualizadoEm = Date.now();
+}
+
+async function sincronizarContextoDaResposta(args = {}, resposta = "") {
+  const sessao = args?.sessao;
+  if (!sessao || !resposta) return;
+
+  const r = norm(resposta);
+  const uni = mencionados(resposta, nomesUni(args));
+  const presencial = mencionados(resposta, nomesShekinahPresencial());
+  let ead = [];
+
+  const sinalShekinah = /\bshekinah\b/.test(r) || sessao.instituicao === "shekinah" || sessao.modalidadeShekinah === "ead";
+  if (sinalShekinah) {
+    try {
+      const cursos = await EAD.listar();
+      ead = mencionados(resposta, cursos.map(c => c?.nome).filter(Boolean));
+    } catch (_) {
+      ead = [];
+    }
+  }
+
+  const m = memoria(sessao);
+
+  if (uni.length === 1 && (r.includes("unifatecie") || sessao.instituicao !== "shekinah")) {
+    const nome = uni[0];
+    sessao.instituicao = "unifatecie";
+    sessao.modalidadeShekinah = null;
+    sessao.eadCursoAtual = null;
+    sessao.curso = nome;
+    sessao.cursoAtual = { nome };
+    sessao.assuntoAtual = "unifatecie_curso";
+    m.recomendacoes = [...new Set([...(m.recomendacoes || []), nome])].slice(-6);
+  } else if (ead.length === 1 && (/\bead\b|\bonline\b/.test(r) || sessao.modalidadeShekinah === "ead")) {
+    const nome = ead[0];
+    sessao.instituicao = "shekinah";
+    sessao.modalidadeShekinah = "ead";
+    sessao.eadCursoAtual = nome;
+    sessao.curso = nome;
+    sessao.cursoAtual = null;
+    sessao.assuntoAtual = "shekinah_ead";
+    m.recomendacoes = [...new Set([...(m.recomendacoes || []), nome])].slice(-6);
+  } else if (presencial.length === 1 && /\bshekinah\b/.test(r) && !/\bead\b|\bonline\b/.test(r)) {
+    const nome = presencial[0];
+    sessao.instituicao = "shekinah";
+    sessao.modalidadeShekinah = "presencial";
+    sessao.eadCursoAtual = null;
+    sessao.curso = nome;
+    sessao.cursoAtual = null;
+    sessao.assuntoAtual = "shekinah_curso";
+    m.recomendacoes = [...new Set([...(m.recomendacoes || []), nome])].slice(-6);
+  }
+
+  atualizarMemoriaResposta(sessao, resposta, args.textoOriginal || "");
+}
+
 async function tentarResponderComIA(args = {}) {
-  const resposta = await iaBase.tentarResponderComIA({
+  const respostaBase = await iaBase.tentarResponderComIA({
     ...args,
     config: enriquecerConfig(args.config),
   });
-  if (!resposta) return resposta;
-  return corrigirFatosAntigosShekinah(ajustarGeneroResposta(resposta), args);
+  if (!respostaBase) return respostaBase;
+  const resposta = corrigirFatosAntigosShekinah(ajustarGeneroResposta(respostaBase), args);
+  await sincronizarContextoDaResposta(args, resposta);
+  return resposta;
 }
+
+async function selfTest() {
+  const assert = require("assert");
+  const sessao = {};
+  await sincronizarContextoDaResposta({
+    textoOriginal: "Quero ser programador",
+    sessao,
+    cursosUnifatecie: {
+      ads: { nome: "Análise e Desenvolvimento de Sistemas" },
+      adm: { nome: "Administração" },
+    },
+  }, "Para se tornar programador, a melhor opção é Análise e Desenvolvimento de Sistemas (ADS) pela UniFatecie. Quer saber o valor?");
+  assert.equal(sessao.instituicao, "unifatecie");
+  assert.equal(sessao.cursoAtual?.nome, "Análise e Desenvolvimento de Sistemas");
+  assert.match(sessao.memoriaLight?.ultimaPerguntaBot || "", /valor/i);
+  console.log("✅ Self-test da sincronização de contexto da IA aprovado.");
+}
+
+if (process.argv.includes("--self-test")) selfTest().catch((e) => { console.error(e); process.exitCode = 1; });
 
 module.exports = {
   iaDisponivel: iaBase.iaDisponivel,
   tentarResponderComIA,
   enriquecerConfig,
   corrigirFatosAntigosShekinah,
+  sincronizarContextoDaResposta,
 };
