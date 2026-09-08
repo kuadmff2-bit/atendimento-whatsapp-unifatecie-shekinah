@@ -29,9 +29,25 @@ function detectarIntencao(texto = "", sessao = {}) {
     return null;
   }
 
+  // LIVE: cobre fala natural, variações e continuações, não só frases exatas.
+  const live = /\b(live|ao vivo|transmissao|webaula|web aula)\b/.test(t) || /\baula\b.*\bao vivo\b/.test(t);
+  if (live && /\b(chat|responder|resposta|interagir|interajo|interage|interacao|pergunta|perguntas|comentario|comentarios|mensagem|mensagens|campo|botao|participar)\b/.test(t)) {
+    return "live_interacao";
+  }
+  if (live && /\b(presenca|presente|frequencia|falta|faltas|obrigatoria|obrigatorio|chamada)\b/.test(t)) {
+    return "live_presenca";
+  }
+  if (live && /\b(gravada|gravacao|replay|depois|perdi|perder|nao assisti|assistir depois|ver depois)\b/.test(t)) {
+    return "live_gravacao";
+  }
+  if (live && /\b(link|horario|hora|entrar|entro|acessar|acesso|abrir|abre|nao aparece|nao abre|onde entra|onde entro|onde fica)\b/.test(t)) {
+    return "live_acesso";
+  }
+  if (live) return "live_geral";
+
   // Intenções mais específicas precisam vencer palavras genéricas como prova, atividade e disciplina.
   if (/\b(nota|notas|media|boletim|resultado)\b/.test(t) &&
-      /\b(disciplina|prova|avaliacao|portal|alunonet|minha|minhas|apareceu|lancou|errada|errado|nao aparece)\b/.test(t)) {
+      /\b(disciplina|prova|avaliacao|portal|alunonet|minha|minhas|apareceu|lancou|errada|errado|nao aparece|nao bate)\b/.test(t)) {
     return "notas";
   }
 
@@ -54,6 +70,12 @@ function detectarIntencao(texto = "", sessao = {}) {
 
   if (/\b(certificado|diploma|colacao|conclusao)\b/.test(t) && !/\bshekinah\b/.test(t)) {
     return "certificado_diploma";
+  }
+
+  // Vencimento é mais específico que a simples presença da palavra boleto.
+  if (/\b(vencimento|vence|vencer|data de pagamento|dia de pagar|dia do pagamento|que dia vence|qual dia vence)\b/.test(t) &&
+      /\b(mensalidade|parcela|boleto|pagamento)\b/.test(t)) {
+    return "vencimento";
   }
 
   return Base.detectarIntencao(texto, sessao);
@@ -124,12 +146,15 @@ Module._load = function (request, parent, isMain) {
 function selfTest() {
   const assert = require("assert");
   const s = { instituicao: "unifatecie" };
+  assert.equal(detectarIntencao("Na live não aparece o botão de responder", s), "live_interacao");
+  assert.equal(detectarIntencao("Como interajo com a professora na transmissão?", s), "live_interacao");
   assert.equal(detectarIntencao("Minha nota da prova não apareceu", s), "notas");
   assert.equal(detectarIntencao("Como envio atividades complementares?", s), "complementares_extensao");
   assert.equal(detectarIntencao("Qual a data da prova no calendário?", s), "calendario");
   assert.equal(detectarIntencao("Quero aproveitar uma disciplina de outra faculdade", s), "transferencia_aproveitamento");
   assert.equal(detectarIntencao("Preciso de uma declaração de matrícula", s), "declaracao");
   assert.equal(detectarIntencao("Como vejo se meu diploma foi liberado?", s), "certificado_diploma");
+  assert.equal(detectarIntencao("Que dia vence meu boleto?", s), "vencimento");
   assert.equal(detectarIntencao("Quero saber os cursos", s), null);
   assert.equal(detectarIntencao("Já paguei e continua aparecendo em atraso", s), null);
   assert.equal(detectarIntencao("Preciso de declaração da Shekinah", s), null);
