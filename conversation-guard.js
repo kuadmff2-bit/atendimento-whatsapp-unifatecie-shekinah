@@ -88,7 +88,6 @@ function querHumano(t = "") {
 async function tratarPortal({ client, msg, textoOriginal, sessao, responder }) {
   const t = norm(textoOriginal);
 
-  // Compatibilidade com sessoes antigas que ainda ficaram na pergunta de instituicao.
   if (sessao.assuntoAtual === "suporte_portal_escolher_instituicao" || sessao.assuntoAtual === "suporte_portal_shekinah") {
     sessao.instituicao = "unifatecie";
     sessao.assuntoAtual = "suporte_portal_unifatecie";
@@ -114,7 +113,6 @@ async function tratarPortal({ client, msg, textoOriginal, sessao, responder }) {
       return true;
     }
 
-    // Outros problemas de portal ficam no fluxo seguro do bot e nunca viram oferta de curso.
     if (pareceConversaOuSuporte(t) && !pareceConsultaDeCurso(t)) return false;
   }
 
@@ -147,8 +145,9 @@ async function tentarConversaNatural(args = {}) {
 
   const t = norm(textoOriginal);
 
+  // Uma saudação no meio da conversa não deve apagar curso, instituição nem histórico.
   if (saudacaoPura(t)) {
-    limparContextoCatalogo(sessao, true);
+    sessao.atualizadoEm = Date.now();
     return false;
   }
 
