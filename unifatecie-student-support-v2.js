@@ -43,7 +43,8 @@ function detectarIntencao(texto = "", sessao = {}) {
     return "calendario";
   }
 
-  if (/\b(transferencia|aproveitamento de disciplina|aproveitar disciplina|dispensa de disciplina|equivalencia)\b/.test(t)) {
+  if (/\b(transferencia|aproveitamento|aproveitar)\b.*\b(disciplina|materia|faculdade|curso)\b/.test(t) ||
+      /\b(dispensa|equivalencia)\b.*\b(disciplina|materia)\b/.test(t)) {
     return "transferencia_aproveitamento";
   }
 
