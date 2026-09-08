@@ -38,12 +38,12 @@ function enriquecerConfig(config = {}) {
     "SHEKINAH EAD — REGRA ABSOLUTA E ATUAL",
     "- O Centro Educacional Shekinah OFERECE cursos livres EAD. Nunca diga que a Shekinah só possui cursos presenciais e nunca direcione automaticamente todo pedido de EAD para a UniFatecie.",
     "- Quando a pessoa estiver falando da Shekinah e disser apenas 'EAD', 'E A D', 'online', 'a distância', 'cursos EAD' ou equivalente, entenda como os cursos EAD da Shekinah e mostre/consulte o catálogo EAD real.",
-    "- Todos os cursos EAD da Shekinah têm a mesma regra comercial: R$ 300,00 à vista OU 2x de R$ 160,00 (1ª parcela no início e 2ª no fim; total parcelado R$ 320,00).",
-    "- Pagando R$ 300,00 à vista, o aluno ganha +2 cursos EAD de sua escolha como brinde.",
-    "- O acesso ao curso é liberado somente após confirmação do pagamento: R$ 300,00 no à vista ou a primeira parcela de R$ 160,00 no parcelado.",
+    "- Todos os cursos EAD da Shekinah têm a mesma regra comercial: R$ 250,00 à vista OU 2x de R$ 150,00 (1ª parcela no início e 2ª no final do curso; total parcelado R$ 300,00).",
+    "- Pagando R$ 250,00 à vista, o aluno ganha +2 cursos EAD da preferência dele como brinde.",
+    "- O acesso ao curso é liberado somente após confirmação do pagamento: R$ 250,00 no à vista ou a primeira parcela de R$ 150,00 no parcelado.",
     "- O certificado é liberado automaticamente ao final, depois da conclusão do curso na plataforma.",
     "- Matrículas EAD da Shekinah são tratadas pelo responsável EAD/Carlos; não diga que são enviadas para a secretária da Shekinah.",
-    "- Não invente taxa de matrícula nem combos para a Shekinah. As antigas informações de matrícula R$ 49,90 e combos 2 por R$ 180 / 3 por R$ 280 NÃO estão autorizadas e não devem ser mencionadas.",
+    "- Não invente taxa de matrícula nem combos para a Shekinah. As antigas informações de matrícula R$ 49,90, combos 2 por R$ 180 / 3 por R$ 280 e a regra anterior de R$ 300 à vista ou 2x de R$ 160 NÃO estão autorizadas e não devem ser mencionadas.",
     "- EJA presencial: R$ 900,00 à vista ou 2x de R$ 500,00, conforme a base operacional atual.",
   ].join("\n");
 
@@ -108,7 +108,7 @@ function corrigirFatosAntigosShekinah(resposta = "", args = {}) {
     || /shekinah[\s\S]{0,180}todos[\s\S]{0,40}presenciais/i.test(norm(texto));
 
   if (negacaoEadShekinah || (contextoShekinah && perguntaEad && /todos (sao|os cursos sao) presenciais/i.test(norm(texto)))) {
-    return "💻 Sim. A *Shekinah oferece cursos EAD*. 😊\n\nPosso te mostrar o catálogo EAD atual. Todos têm a regra de *R$ 300 à vista* ou *2x de R$ 160*; no pagamento à vista, você ganha *+2 cursos EAD* de brinde.";
+    return "💻 Sim. A *Shekinah oferece cursos EAD*. 😊\n\nPosso te mostrar o catálogo EAD atual. Todos custam *R$ 250 à vista* ou *2x de R$ 150*; pagando à vista, você ganha *+2 cursos EAD da sua preferência* de brinde.";
   }
 
   texto = texto
@@ -122,6 +122,9 @@ function corrigirFatosAntigosShekinah(resposta = "", args = {}) {
       return true;
     })
     .join("\n")
+    .replace(/R\$\s*300(?:,00)?\s*à vista/gi, "R$ 250,00 à vista")
+    .replace(/2x\s*de\s*R\$\s*160(?:,00)?/gi, "2x de R$ 150,00")
+    .replace(/total parcelado:?\s*R\$\s*320(?:,00)?/gi, "total parcelado: R$ 300,00")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
@@ -250,6 +253,9 @@ async function selfTest() {
   assert.equal(sessao.instituicao, "unifatecie");
   assert.equal(sessao.cursoAtual?.nome, "Análise e Desenvolvimento de Sistemas");
   assert.match(sessao.memoriaLight?.ultimaPerguntaBot || "", /valor/i);
+  const cfg = enriquecerConfig({ shekinah: { cursos: "" } });
+  assert.match(cfg.shekinah.cursos, /R\$ 250,00 à vista/);
+  assert.match(cfg.shekinah.cursos, /2x de R\$ 150,00/);
   console.log("✅ Self-test da sincronização de contexto da IA aprovado.");
 }
 
