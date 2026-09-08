@@ -1,5 +1,5 @@
 function norm(s = "") {
-  return String(s)
+  return String(s || "")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -10,210 +10,135 @@ function norm(s = "") {
 
 const STOP = new Set([
   "tem","tenho","ter","curso","cursos","de","da","do","das","dos","um","uma","uns","umas","o","a","os","as","e","ou","pra","para","por","com","sobre",
-  "eu","me","meu","minha","quero","queria","gostaria","preciso","saber","ver","conhecer","mostra","mostrar","mostre","mostreme","fala","falar","diz","dizer",
+  "eu","me","meu","minha","quero","queria","gostaria","preciso","saber","ver","conhecer","mostra","mostrar","mostre","fala","falar","diz","dizer",
   "opcao","opcoes","lista","listar","catalogo","informacao","informacoes","detalhe","detalhes","disponivel","disponiveis","oferta","ofertas",
-  "qual","quais","que","ead","online","shekinah","voces","voce","oferece","oferecem","algum","alguma","algo","area","nessa","nesta","isso","issoai","ai",
+  "qual","quais","que","ead","online","shekinah","voces","voce","oferece","oferecem","algum","alguma","algo","area","nessa","nesta","isso","ai",
   "outra","outras","outro","outros","mais","tambem"
 ]);
 
+const C = (nome, rotulo, gatilhos, categorias = [], termos = [], prioridades = []) => ({
+  nome, rotulo, gatilhos, categorias, termos, prioridades
+});
+
 const CONCEITOS = [
-  {
-    nome: "idiomas",
-    rotulo: "Idiomas",
-    gatilhos: ["idioma","idiomas","lingua","linguas","lingua estrangeira","linguas estrangeiras","ingles","espanhol","frances","italiano","alemao","portugues para estrangeiros"],
-    categorias: ["idioma","idiomas"],
-    termosCurso: ["ingles","espanhol","frances","italiano","alemao","libras","idioma","portugues"]
-  },
-  {
-    nome: "informatica",
-    rotulo: "Informática e tecnologia",
-    gatilhos: ["informatica","tecnologia","computador","computadores","pc","windows","office","digitar","digitacao","word","excel","power point","powerpoint"],
-    categorias: ["informatica","tecnologia","informatica e tecnologia"],
-    termosCurso: ["informatica","windows","word","excel","power point","powerpoint","access","digitacao","linux","office"],
-    prioridades: ["Introdução à Informática","Windows 11","Microsoft Word","Excel Básico e Avançado","Power Point","Digitação Interativa"]
-  },
-  {
-    nome: "programacao",
-    rotulo: "Programação e desenvolvimento",
-    gatilhos: ["programacao","programar","codigo","codar","desenvolvedor","desenvolvimento de software","software","dev","frontend","backend","full stack"],
-    categorias: ["informatica","tecnologia","informatica e tecnologia"],
-    termosCurso: ["logica de programacao","javascript","php","html","css","python","java","programacao","app android","android e ios","wordpress"],
-    prioridades: ["Lógica de Programação","JavaScript","PHP: Do Básico ao Avançado","HTML e CSS","Criação de App Android e iOS","Criação de Game Profissional"]
-  },
-  {
-    nome: "sites",
-    rotulo: "Sites e web",
-    gatilhos: ["site","sites","website","pagina web","web","criar site","desenvolver site","loja virtual","ecommerce","e commerce","wordpress"],
-    categorias: ["informatica","tecnologia","informatica e tecnologia"],
-    termosCurso: ["html","css","javascript","php","wordpress","site","loja virtual","web"],
-    prioridades: ["HTML e CSS","JavaScript","PHP: Do Básico ao Avançado","Programação de sites Wordpress","WordPress V2","Criação de Loja Virtual"]
-  },
-  {
-    nome: "apps",
-    rotulo: "Aplicativos",
-    gatilhos: ["aplicativo","aplicativos","app","apps","android","ios","criar aplicativo","desenvolver aplicativo"],
-    categorias: ["informatica","tecnologia","informatica e tecnologia"],
-    termosCurso: ["app","android","ios","programacao","javascript"],
-    prioridades: ["Criação de App Android e iOS","Lógica de Programação","JavaScript"]
-  },
-  {
-    nome: "jogos",
-    rotulo: "Jogos e games",
-    gatilhos: ["jogo","jogos","game","games","gamedev","desenvolver jogos","criar jogos","fazer jogos","programar jogos"],
-    categorias: ["informatica","tecnologia","informatica e tecnologia"],
-    termosCurso: ["game","jogo","blender","3d","logica de programacao","javascript"],
-    prioridades: ["Criação de Game Profissional","Lógica de Programação","Blender 3D","3D Studio Max Básico","JavaScript"]
-  },
-  {
-    nome: "design",
-    rotulo: "Design e criação",
-    gatilhos: ["design","arte digital","imagem","imagens","logo","logos","editar foto","foto","fotos","criacao grafica","artes graficas"],
-    categorias: ["informatica","tecnologia","design","diversas areas"],
-    termosCurso: ["canva","photoshop","illustrator","corel","indesign","design","arte"],
-    prioridades: ["Canva","PhotoShop CC","Illustrator 2022","Corel Draw X8","InDesign"]
-  },
-  {
-    nome: "video",
-    rotulo: "Vídeo e conteúdo digital",
-    gatilhos: ["video","videos","editar video","edicao de video","motion","efeitos visuais","premiere","after effects"],
-    categorias: ["informatica","tecnologia","diversas areas"],
-    termosCurso: ["premiere","after effects","video","youtuber","podcast"],
-    prioridades: ["Edição de Vídeo Premiere","After Effects","Como ser um Youtuber","Operador de Podcast"]
-  },
-  {
-    nome: "3d",
-    rotulo: "3D, desenho técnico e projetos",
-    gatilhos: ["3d","modelagem 3d","modelar","render","animacao 3d","autocad","sketchup"],
-    categorias: ["informatica","tecnologia","diversas areas"],
-    termosCurso: ["blender","3d studio","sketchup","autocad","3d"],
-    prioridades: ["Blender 3D","3D Studio Max Básico","SketchUp","AutoCad 2D e 3D"]
-  },
-  {
-    nome: "administrativo",
-    rotulo: "Administrativo e escritório",
-    gatilhos: ["administrativo","administracao","escritorio","secretaria","secretariado","recepcao","recepcionista","auxiliar administrativo","assistente administrativo"],
-    categorias: ["administrativo","administracao"],
-    termosCurso: ["administracao","administrativo","secretariado","recepcionista","recepcao","almoxarifado","arquivologia"]
-  },
-  {
-    nome: "rh",
-    rotulo: "Recursos Humanos e departamento pessoal",
-    gatilhos: ["rh","recursos humanos","departamento pessoal","dp","folha de pagamento","recrutamento","selecao","lideranca"],
-    categorias: ["administrativo","administracao"],
-    termosCurso: ["recursos humanos","departamento pessoal","folha","recrutamento","lideranca","gestao de pessoas"]
-  },
-  {
-    nome: "financeiro",
-    rotulo: "Financeiro e finanças",
-    gatilhos: ["financeiro","financas","gestao financeira","dinheiro","caixa","contas a pagar","contas a receber","fluxo de caixa","contabilidade"],
-    categorias: ["administrativo","administracao"],
-    termosCurso: ["financeira","financeiro","financas","caixa","contabilidade","contabil","credito","cobranca"]
-  },
-  {
-    nome: "comercio_vendas",
-    rotulo: "Comércio, vendas e atendimento",
-    gatilhos: ["comercio","vendas","vendedor","atendimento","atendente","operador de caixa","caixa","telemarketing","loja","cliente","comercial"],
-    categorias: ["administrativo","administracao","diversas areas"],
-    termosCurso: ["vendas","operador de caixa","atendente","telemarketing","comercial","marketing pessoal","farmacia","secretariado"]
-  },
-  {
-    nome: "marketing",
-    rotulo: "Marketing e vendas online",
-    gatilhos: ["marketing","marketing digital","vendas online","anuncio","anuncios","trafego","dropshipping","whatsapp business","vender pela internet","midias sociais","redes sociais","instagram"],
-    categorias: ["administrativo","informatica","tecnologia","diversas areas"],
-    termosCurso: ["marketing","adwords","dropshipping","whatsapp business","loja virtual","canva","instagram","midias sociais"]
-  },
-  {
-    nome: "educacao",
-    rotulo: "Educação e apoio escolar",
-    gatilhos: ["apoio","curso de apoio","cursos de apoio","apoio escolar","apoio pedagogico","reforco","reforco escolar","pedagogico","educacao","ensino","aprendizagem","creche","auxiliar de classe","professor","escola"],
-    categorias: ["educacao","preparatorio","preparatorios","diversas areas"],
-    termosCurso: ["pedagog","creche","educacao","reforco","auxiliar de classe","supervisao","escolar","professor"]
-  },
-  {
-    nome: "preparatorios",
-    rotulo: "Preparatórios e estudos",
-    gatilhos: ["preparatorio","preparatorios","concurso","concursos","enem","vestibular","prova","matematica","portugues","redacao","historia","geografia"],
-    categorias: ["preparatorio","preparatorios"],
-    termosCurso: ["matematica","portugues","redacao","historia","geografia","preparatorio","concurso","enem"]
-  },
-  {
-    nome: "saude",
-    rotulo: "Saúde e cuidados",
-    gatilhos: ["saude","cuidador","idoso","cuidador de idoso","farmacia","atendente de farmacia","agente de saude","primeiros socorros","enfermagem","radiologia","hospital"],
-    categorias: ["saude","diversas areas"],
-    termosCurso: ["cuidador","idoso","farmacia","saude","primeiros socorros","radiologia","hospital","agente comunitario"]
-  },
-  {
-    nome: "beleza",
-    rotulo: "Beleza e estética",
-    gatilhos: ["beleza","estetica","manicure","pedicure","maquiagem","cabelo","cabeleireiro","barbeiro","barbearia","sobrancelha","unha","unhas"],
-    categorias: ["beleza","estetica","diversas areas"],
-    termosCurso: ["manicure","pedicure","maquiagem","cabeleireiro","barbeiro","sobrancelha","estetica","beleza","unha"]
-  },
-  {
-    nome: "culinaria",
-    rotulo: "Culinária e alimentos",
-    gatilhos: ["culinaria","culinario","gastronomia","confeitaria","doces","salgados","panificacao","padeiro","bolo","bolos","pizzaiolo","barista","alimentos","cozinheiro","cozinha"],
-    categorias: ["culinaria","gastronomia","diversas areas"],
-    termosCurso: ["culinaria","gastronomia","confeitaria","bolo","salgado","panificacao","padeiro","pizzaiolo","barista","cozinheiro"]
-  },
-  {
-    nome: "eletrica",
-    rotulo: "Elétrica e manutenção",
-    gatilhos: ["eletrica","eletricista","eletricidade","instalacao eletrica","manutencao eletrica","refrigeracao","ar condicionado"],
-    categorias: ["diversas areas"],
-    termosCurso: ["eletricista","eletrica","eletricidade","refrigeracao","ar condicionado"]
-  },
-  {
-    nome: "manutencao",
-    rotulo: "Manutenção de equipamentos",
-    gatilhos: ["consertar celular","arrumar celular","manutencao celular","tecnico de celular","consertar computador","manutencao pc","montar pc","manutencao de computador","hardware"],
-    categorias: ["informatica","tecnologia","diversas areas"],
-    termosCurso: ["manutencao de celular","montagem e manutencao","hardware","manutencao"]
-  },
-  {
-    nome: "logistica",
-    rotulo: "Logística, estoque e transporte",
-    gatilhos: ["logistica","estoque","almoxarifado","transporte","armazem","armazenagem","expedicao","compras"],
-    categorias: ["administrativo","diversas areas"],
-    termosCurso: ["logistica","estoque","almoxarifado","transporte","armazenagem","expedicao","compras"]
-  },
-  {
-    nome: "seguranca_trabalho",
-    rotulo: "Segurança e trabalho",
-    gatilhos: ["seguranca do trabalho","epi","prevencao de acidentes","nr10","nr 10","nr35","nr 35","brigadista","bombeiro civil"],
-    categorias: ["seguranca","diversas areas"],
-    termosCurso: ["seguranca do trabalho","nr10","nr 10","nr35","nr 35","brigadista","bombeiro"]
-  },
-  {
-    nome: "seguranca_digital",
-    rotulo: "Segurança digital",
-    gatilhos: ["seguranca digital","seguranca na internet","internet segura","cyber","ciberseguranca","hacker","hacking"],
-    categorias: ["informatica","tecnologia","informatica e tecnologia"],
-    termosCurso: ["seguranca na internet","linux","seguranca digital","cyber"]
-  },
-  {
-    nome: "comunicacao",
-    rotulo: "Comunicação e expressão",
-    gatilhos: ["comunicacao","oratoria","falar em publico","jornalismo","escrita","redacao profissional","apresentacao"],
-    categorias: ["diversas areas","administrativo"],
-    termosCurso: ["oratoria","jornalismo","comunicacao","redacao","apresentacao"]
-  },
-  {
-    nome: "criador",
-    rotulo: "Criação de conteúdo",
-    gatilhos: ["youtuber","youtube","podcast","criador de conteudo","conteudo digital","influenciador"],
-    categorias: ["informatica","tecnologia","diversas areas"],
-    termosCurso: ["youtuber","podcast","video","canva","marketing"]
-  },
-  {
-    nome: "empreendedorismo",
-    rotulo: "Empreendedorismo e negócios",
-    gatilhos: ["empreendedorismo","empreender","negocio","negocios","empresa","abrir empresa","trabalhar por conta","autonomo","mei"],
-    categorias: ["administrativo","diversas areas"],
-    termosCurso: ["empreendedor","negocio","administracao","marketing","vendas","gestao"]
-  }
+  C("idiomas", "Idiomas",
+    ["idioma","idiomas","lingua","linguas","lingua estrangeira","ingles","espanhol","frances","italiano","alemao","libras"],
+    ["idioma","idiomas"], ["ingles","espanhol","frances","italiano","alemao","libras","portugues"]),
+
+  C("informatica", "Informática e tecnologia",
+    ["informatica","tecnologia","computador","computadores","pc","windows","office","digitar","digitacao","word","excel","powerpoint","power point"],
+    ["informatica","tecnologia","informatica e tecnologia"],
+    ["informatica","windows","word","excel","power point","powerpoint","access","digitacao","linux","office"],
+    ["Introdução à Informática","Windows 11","Microsoft Word","Excel Básico e Avançado","Power Point","Digitação Interativa"]),
+
+  C("programacao", "Programação e desenvolvimento",
+    ["programacao","programar","codigo","codar","desenvolvedor","desenvolvimento de software","software","dev","frontend","backend","full stack"],
+    ["informatica","tecnologia","informatica e tecnologia"],
+    ["logica de programacao","javascript","php","html","css","python","java","programacao","app android","wordpress"],
+    ["Lógica de Programação","JavaScript","PHP: Do Básico ao Avançado","HTML e CSS","Criação de App Android e iOS","Criação de Game Profissional"]),
+
+  C("sites", "Sites e web",
+    ["site","sites","website","pagina web","web","criar site","desenvolver site","loja virtual","ecommerce","e commerce","wordpress"],
+    ["informatica","tecnologia","informatica e tecnologia"],
+    ["html","css","javascript","php","wordpress","site","loja virtual","web"],
+    ["HTML e CSS","JavaScript","PHP: Do Básico ao Avançado","Programação de sites Wordpress","WordPress V2","Criação de Loja Virtual"]),
+
+  C("apps", "Aplicativos",
+    ["aplicativo","aplicativos","app","apps","android","ios","criar aplicativo","desenvolver aplicativo"],
+    ["informatica","tecnologia","informatica e tecnologia"], ["app","android","ios","programacao","javascript"],
+    ["Criação de App Android e iOS","Lógica de Programação","JavaScript"]),
+
+  C("jogos", "Jogos e games",
+    ["jogo","jogos","game","games","gamedev","desenvolver jogos","criar jogos","fazer jogos","programar jogos"],
+    ["informatica","tecnologia","informatica e tecnologia"], ["game","jogo","blender","3d","logica de programacao","javascript"],
+    ["Criação de Game Profissional","Lógica de Programação","Blender 3D","3D Studio Max Básico","JavaScript"]),
+
+  C("design", "Design e criação",
+    ["design","arte digital","imagem","imagens","logo","logos","editar foto","foto","fotos","criacao grafica","artes graficas"],
+    ["design","informatica","tecnologia"], ["canva","photoshop","illustrator","corel","indesign","design","arte"],
+    ["Canva","PhotoShop CC","Illustrator 2022","Corel Draw X8","InDesign"]),
+
+  C("video", "Vídeo e conteúdo digital",
+    ["video","videos","editar video","edicao de video","motion","efeitos visuais","premiere","after effects"],
+    ["informatica","tecnologia"], ["premiere","after effects","video","youtuber","podcast"],
+    ["Edição de Vídeo Premiere","After Effects","Como ser um Youtuber","Operador de Podcast"]),
+
+  C("3d", "3D, desenho técnico e projetos",
+    ["3d","modelagem 3d","modelar","render","animacao 3d","autocad","sketchup"],
+    ["informatica","tecnologia"], ["blender","3d studio","sketchup","autocad","3d"],
+    ["Blender 3D","3D Studio Max Básico","SketchUp","AutoCad 2D e 3D"]),
+
+  C("administrativo", "Administrativo e escritório",
+    ["administrativo","administracao","escritorio","secretaria","secretariado","recepcao","recepcionista","auxiliar administrativo","assistente administrativo"],
+    ["administrativo","administracao"], ["administracao","administrativo","secretariado","recepcionista","recepcao","almoxarifado","arquivologia"]),
+
+  C("rh", "Recursos Humanos e departamento pessoal",
+    ["rh","recursos humanos","departamento pessoal","folha de pagamento","recrutamento","selecao","lideranca"],
+    ["administrativo","administracao"], ["recursos humanos","departamento pessoal","folha","recrutamento","lideranca","gestao de pessoas"]),
+
+  C("financeiro", "Financeiro e finanças",
+    ["financeiro","financas","gestao financeira","dinheiro","contas a pagar","contas a receber","fluxo de caixa","contabilidade"],
+    ["administrativo","administracao"], ["financeira","financeiro","financas","contabilidade","contabil","credito","cobranca"]),
+
+  C("comercio_vendas", "Comércio, vendas e atendimento",
+    ["comercio","vendas","vendedor","atendimento","atendente","operador de caixa","caixa","telemarketing","loja","cliente","comercial"],
+    ["administrativo","administracao"], ["vendas","operador de caixa","atendente","telemarketing","comercial","marketing pessoal","farmacia","secretariado"]),
+
+  C("marketing", "Marketing e vendas online",
+    ["marketing","marketing digital","vendas online","anuncio","anuncios","trafego","dropshipping","whatsapp business","vender pela internet","midias sociais","redes sociais","instagram"],
+    ["administrativo","informatica","tecnologia"], ["marketing","adwords","dropshipping","whatsapp business","loja virtual","canva","instagram","midias sociais"]),
+
+  C("educacao", "Educação e apoio escolar",
+    ["apoio","apoio escolar","apoio pedagogico","reforco","reforco escolar","pedagogico","educacao","ensino","aprendizagem","creche","auxiliar de classe","professor","escola"],
+    ["educacao","preparatorio","preparatorios"], ["pedagog","creche","educacao","reforco","auxiliar de classe","supervisao","escolar","professor"]),
+
+  C("preparatorios", "Preparatórios e estudos",
+    ["preparatorio","preparatorios","concurso","concursos","enem","vestibular","prova","matematica","portugues","redacao","historia","geografia"],
+    ["preparatorio","preparatorios"], ["matematica","portugues","redacao","historia","geografia","preparatorio","concurso","enem"]),
+
+  C("saude", "Saúde e cuidados",
+    ["saude","cuidador","idoso","cuidador de idoso","farmacia","atendente de farmacia","agente de saude","primeiros socorros","enfermagem","radiologia","hospital"],
+    ["saude"], ["cuidador","idoso","farmacia","saude","primeiros socorros","radiologia","hospital","agente comunitario"]),
+
+  C("beleza", "Beleza e estética",
+    ["beleza","estetica","manicure","pedicure","maquiagem","cabelo","cabeleireiro","barbeiro","barbearia","sobrancelha","unha","unhas"],
+    ["beleza","estetica"], ["manicure","pedicure","maquiagem","cabeleireiro","barbeiro","sobrancelha","estetica","beleza","unha"]),
+
+  C("culinaria", "Culinária e alimentos",
+    ["culinaria","culinario","gastronomia","confeitaria","doces","salgados","panificacao","padeiro","bolo","bolos","pizzaiolo","barista","alimentos","cozinheiro","cozinha"],
+    ["culinaria","gastronomia"], ["culinaria","gastronomia","confeitaria","bolo","salgado","panificacao","padeiro","pizzaiolo","barista","cozinheiro"]),
+
+  C("eletrica", "Elétrica e manutenção",
+    ["eletrica","eletricista","eletricidade","instalacao eletrica","manutencao eletrica","refrigeracao","ar condicionado"],
+    ["eletrica"], ["eletricista","eletrica","eletricidade","refrigeracao","ar condicionado"]),
+
+  C("manutencao", "Manutenção de equipamentos",
+    ["consertar celular","arrumar celular","manutencao celular","tecnico de celular","consertar computador","manutencao pc","montar pc","hardware"],
+    ["informatica","tecnologia"], ["manutencao de celular","montagem e manutencao","hardware","manutencao"]),
+
+  C("logistica", "Logística, estoque e transporte",
+    ["logistica","estoque","almoxarifado","transporte","armazem","armazenagem","expedicao","compras"],
+    ["logistica","administrativo"], ["logistica","estoque","almoxarifado","transporte","armazenagem","expedicao","compras"]),
+
+  C("seguranca_trabalho", "Segurança e trabalho",
+    ["seguranca do trabalho","epi","prevencao de acidentes","nr10","nr 10","nr35","nr 35","brigadista","bombeiro civil"],
+    ["seguranca"], ["seguranca do trabalho","nr10","nr 10","nr35","nr 35","brigadista","bombeiro"]),
+
+  C("seguranca_digital", "Segurança digital",
+    ["seguranca digital","seguranca na internet","internet segura","cyber","ciberseguranca","hacker","hacking"],
+    ["informatica","tecnologia"], ["seguranca na internet","linux","seguranca digital","cyber"]),
+
+  C("comunicacao", "Comunicação e expressão",
+    ["comunicacao","oratoria","falar em publico","jornalismo","escrita","redacao profissional","apresentacao"],
+    ["comunicacao"], ["oratoria","jornalismo","comunicacao","redacao","apresentacao"]),
+
+  C("criador", "Criação de conteúdo",
+    ["youtuber","youtube","podcast","criador de conteudo","conteudo digital","influenciador"],
+    ["informatica","tecnologia"], ["youtuber","podcast","video","canva","marketing"]),
+
+  C("empreendedorismo", "Empreendedorismo e negócios",
+    ["empreendedorismo","empreender","negocio","negocios","empresa","abrir empresa","trabalhar por conta","autonomo","mei"],
+    ["administrativo","administracao"], ["empreendedor","negocio","administracao","marketing","vendas","gestao"])
 ];
 
 function tokens(texto) {
@@ -226,113 +151,113 @@ function dice(a, b) {
   if (!a || !b) return 0;
   if (a === b) return 1;
   if (a.length < 2 || b.length < 2) return 0;
-  const pares = new Map();
+  const mapa = new Map();
   for (let i = 0; i < a.length - 1; i += 1) {
     const p = a.slice(i, i + 2);
-    pares.set(p, (pares.get(p) || 0) + 1);
+    mapa.set(p, (mapa.get(p) || 0) + 1);
   }
   let inter = 0;
   for (let i = 0; i < b.length - 1; i += 1) {
     const p = b.slice(i, i + 2);
-    const n = pares.get(p) || 0;
+    const n = mapa.get(p) || 0;
     if (n > 0) {
       inter += 1;
-      pares.set(p, n - 1);
+      mapa.set(p, n - 1);
     }
   }
   return (2 * inter) / ((a.length - 1) + (b.length - 1));
 }
 
 function incluiExpressao(texto, expressao) {
-  const t = ` ${norm(texto)} `;
-  const e = ` ${norm(expressao)} `;
-  return t.includes(e);
+  return ` ${norm(texto)} `.includes(` ${norm(expressao)} `);
 }
 
-function detectarConceitos(texto) {
+function detectarConceitos(texto = "") {
   const t = norm(texto);
+  if (!t) return [];
   return CONCEITOS.filter(c => c.gatilhos.some(g => incluiExpressao(t, g) || t.includes(norm(g))));
 }
 
-function porNome(cursos = []) {
-  return new Map(cursos.map(c => [norm(c?.nome), c]).filter(([n]) => n));
+function baseCurso(c = {}) {
+  return norm([c.nome, c.categoriaInterna, c.categoriaLoja, c.descricao].filter(Boolean).join(" "));
 }
 
-function textoCurso(curso = {}) {
-  return norm([
-    curso?.nome,
-    curso?.categoriaInterna,
-    curso?.categoriaLoja,
-    curso?.descricao,
-  ].filter(Boolean).join(" "));
-}
-
-function conceitoPontuaCurso(conceito, curso) {
+function scoreConceito(conceito, curso) {
   const nome = norm(curso?.nome);
   const categoria = norm(`${curso?.categoriaInterna || ""} ${curso?.categoriaLoja || ""}`);
   const descricao = norm(curso?.descricao || "");
   let score = 0;
 
   for (const cat of conceito.categorias || []) {
-    const c = norm(cat);
-    if (!c || ["diversas areas", "outros", "geral"].includes(c)) continue;
-    if (categoria.includes(c)) score += 320;
+    const q = norm(cat);
+    if (q && categoria.includes(q)) score += 300;
   }
-  for (const termo of conceito.termosCurso || []) {
+  for (const termo of conceito.termos || []) {
     const q = norm(termo);
     if (!q) continue;
-    if (nome === q) score += 360;
-    else if (nome.includes(q)) score += 240;
-    else if (categoria.includes(q)) score += 150;
-    else if (descricao.includes(q)) score += 55;
+    if (nome === q) score += 420;
+    else if (nome.includes(q)) score += 250;
+    else if (categoria.includes(q)) score += 130;
+    else if (descricao.includes(q)) score += 45;
   }
   return score;
 }
 
-function recomendar(cursos = [], texto = "", limite = 12) {
-  const mapa = porNome(cursos);
-  const selecionados = new Map();
-  const conceitos = detectarConceitos(texto);
-
+function mapaPrioridades(conceitos, cursos) {
+  const nomesDisponiveis = new Map(cursos.map(c => [norm(c?.nome), c]));
+  const ranks = new Map();
+  let bloco = 0;
   for (const conceito of conceitos) {
-    const prioridades = conceito.prioridades || [];
-    prioridades.forEach((nome, indice) => {
-      const curso = mapa.get(norm(nome));
-      if (curso) selecionados.set(norm(curso.nome), { curso, score: 1600 - (indice * 80) });
+    (conceito.prioridades || []).forEach((nome, indice) => {
+      const chave = norm(nome);
+      if (!nomesDisponiveis.has(chave)) return;
+      const rank = bloco * 100 + indice;
+      if (!ranks.has(chave) || rank < ranks.get(chave)) ranks.set(chave, rank);
     });
+    bloco += 1;
   }
+  return ranks;
+}
 
-  for (const curso of cursos) {
-    const chave = norm(curso?.nome);
-    if (!chave) continue;
-    let score = selecionados.get(chave)?.score || 0;
-    for (const conceito of conceitos) score += conceitoPontuaCurso(conceito, curso);
-    if (score > 0) selecionados.set(chave, { curso, score });
-  }
-
+function recomendar(cursos = [], texto = "", limite = 12) {
+  if (!Array.isArray(cursos) || !cursos.length) return [];
+  const conceitos = detectarConceitos(texto);
   const qTokens = tokens(texto);
+  const ranks = mapaPrioridades(conceitos, cursos);
+  const avaliados = [];
+
   for (const curso of cursos) {
-    const chave = norm(curso?.nome);
-    if (!chave) continue;
-    const base = textoCurso(curso);
+    if (!curso?.nome) continue;
+    const chave = norm(curso.nome);
+    const base = baseCurso(curso);
     const baseTokens = base.split(" ").filter(Boolean);
-    let score = selecionados.get(chave)?.score || 0;
+    let score = 0;
+
+    for (const conceito of conceitos) score += scoreConceito(conceito, curso);
     for (const q of qTokens) {
       if (baseTokens.includes(q)) score += 90;
       else if (base.includes(q)) score += 55;
       else {
-        const melhor = Math.max(0, ...baseTokens.map(nt => dice(q, nt)));
+        const melhor = Math.max(0, ...baseTokens.map(x => dice(q, x)));
         if (melhor >= 0.84) score += 42;
         else if (melhor >= 0.74) score += 24;
       }
     }
-    if (score > 0) selecionados.set(chave, { curso, score });
+
+    const rank = ranks.has(chave) ? ranks.get(chave) : Number.POSITIVE_INFINITY;
+    if (score > 0 || Number.isFinite(rank)) avaliados.push({ curso, score, rank });
   }
 
-  return [...selecionados.values()]
-    .sort((a, b) => b.score - a.score || String(a.curso.nome).localeCompare(String(b.curso.nome), "pt-BR"))
+  return avaliados
+    .sort((a, b) => {
+      const ap = Number.isFinite(a.rank);
+      const bp = Number.isFinite(b.rank);
+      if (ap && bp && a.rank !== b.rank) return a.rank - b.rank;
+      if (ap !== bp) return ap ? -1 : 1;
+      return b.score - a.score || String(a.curso.nome).localeCompare(String(b.curso.nome), "pt-BR");
+    })
     .map(x => x.curso)
-    .slice(0, limite);
+    .slice(0, Math.max(1, Number(limite) || 12));
 }
 
 function mencionaCatalogoOuCursos(t) {
@@ -351,7 +276,7 @@ function ehPedidoCatalogo(texto = "") {
 
 function ehPedidoMatricula(texto = "") {
   const t = norm(texto);
-  return /\b(matricula|matricular|matricular me|me matricular|inscricao|inscrever|me inscrever|fazer minha matricula|quero matricula)\b/.test(t);
+  return /\b(matricula|matricular|me matricular|inscricao|inscrever|me inscrever|fazer minha matricula|quero matricula)\b/.test(t);
 }
 
 function emFluxoObrigatorio(sessao = {}) {
@@ -361,7 +286,7 @@ function emFluxoObrigatorio(sessao = {}) {
 
 function parecePedidoPorObjetivo(texto = "") {
   const t = norm(texto);
-  if (ehPedidoCatalogo(t)) return false;
+  if (!t || ehPedidoCatalogo(t)) return false;
   if (detectarConceitos(t).length) return true;
   if (!tokens(t).length) return false;
   return /\b(curso|cursos|aprender|trabalhar|mexer|fazer|criar|desenvolver|programar|editar|consertar|montar|apoio|reforco|area|ramo|setor)\b/.test(t)
@@ -370,7 +295,9 @@ function parecePedidoPorObjetivo(texto = "") {
 
 function rotuloDoPedido(texto = "") {
   const conceitos = detectarConceitos(texto);
-  return conceitos.length === 1 ? conceitos[0].rotulo : "o que você procura";
+  if (conceitos.length === 1) return conceitos[0].rotulo;
+  if (conceitos.length > 1) return conceitos.map(c => c.rotulo).slice(0, 3).join(" / ");
+  return "o que você procura";
 }
 
 function respostaRecomendacoes(cursos = [], texto = "") {
@@ -397,6 +324,7 @@ function selfTest() {
     { nome: "Excel Básico e Avançado", categoriaLoja: "INFORMÁTICA E TECNOLOGIA" },
     { nome: "Cuidador de Idoso", categoriaLoja: "DIVERSAS ÁREAS" },
     { nome: "Criação de Game Profissional", categoriaLoja: "INFORMÁTICA E TECNOLOGIA" },
+    { nome: "Lógica de Programação", categoriaLoja: "INFORMÁTICA E TECNOLOGIA" },
     { nome: "Blender 3D", categoriaLoja: "INFORMÁTICA E TECNOLOGIA" },
   ];
   assert.equal(detectarConceitos("Idiomas")[0]?.nome, "idiomas");
