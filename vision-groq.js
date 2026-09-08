@@ -2,8 +2,9 @@ const Module = require("module");
 const originalLoad = Module._load;
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
-const MODELO_VISAO_PADRAO = "qwen/qwen3.6-27b";
+const MODELO_VISAO_PADRAO = "qwen/qwen3.8-27b";
 const TAMANHO_MAXIMO_BYTES = 15 * 1024 * 1024;
+const MINIATURA_MAX_BYTES = 12 * 1024;
 const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function textoSeguro(v = "") { return String(v || "").trim(); }
@@ -30,10 +31,10 @@ function emFluxoEstruturado(sessao = {}) {
 function pareceBase64Imagem(valor = "") {
   const t = textoSeguro(valor).replace(/\s+/g, "");
   if (t.length < 80) return false;
-  return /^\/9j\//.test(t)                  // JPEG
-    || /^iVBORw0KGgo/.test(t)                // PNG
-    || /^UklGR/.test(t)                     // WEBP (RIFF base64)
-    || /^R0lGOD/.test(t);                    // GIF
+  return /^\/9j\//.test(t)
+    || /^iVBORw0KGgo/.test(t)
+    || /^UklGR/.test(t)
+    || /^R0lGOD/.test(t);
 }
 
 function mimePorBase64(valor = "") {
@@ -96,6 +97,10 @@ function idsMensagem(msg = {}) {
     msg?._serialized,
     msg?.messageId,
     msg?.msgId,
+    msg?.key?._serialized,
+    msg?.key?.id,
+    msg?.parentMsgId?._serialized,
+    typeof msg?.parentMsgId === "string" ? msg.parentMsgId : null,
   ].filter((v) => typeof v === "string" && v.trim());
   return [...new Set(candidatos.map((v) => v.trim()))];
 }
@@ -116,7 +121,24 @@ function obterMime(msg = {}) {
   return mimePorBase64(body) || "image/jpeg";
 }
 
+function tamanhoBase64(base64 = "") {
+  try { return Buffer.from(limparBase64(base64), "base64").length; }
+  catch (_) { return 0; }
+}
+
+function melhorBase64(...valores) {
+  let melhor = "";
+  let tamanho = 0;
+  for (const valor of valores) {
+    const b64 = extrairBase64(valor);
+    const atual = tamanhoBase64(b64);
+    if (atual > tamanho) { melhor = b64; tamanho = atual; }
+  }
+  return { base64: melhor, tamanho };
+}
+
 async function tentarDownload(client, alvo) {
+  if (!alvo) return null;
   try {
     const retorno = await client.downloadMedia(alvo);
     const b64 = extrairBase64(retorno);
@@ -127,52 +149,126 @@ async function tentarDownload(client, alvo) {
   return null;
 }
 
+function chatIdsMensagem(msg = {}) {
+  const candidatos = [
+    msg?.from,
+    typeof msg?.chatId === "string" ? msg.chatId : null,
+    msg?.chatId?._serialized,
+    msg?.chat?.id?._serialized,
+    typeof msg?.chat?.id === "string" ? msg.chat.id : null,
+  ].filter((v) => typeof v === "string" && v.trim());
+  return [...new Set(candidatos.map((v) => v.trim()))];
+}
+
+function timestampMsg(msg = {}) {
+  const v = Number(msg?.t || msg?.timestamp || msg?.ts || 0);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
+function parecidoComMensagemOriginal(candidato = {}, original = {}) {
+  if (!ehImagem(candidato)) return false;
+  const hashA = textoSeguro(original?.filehash || original?.uploadhash);
+  const hashB = textoSeguro(candidato?.filehash || candidato?.uploadhash);
+  if (hashA && hashB && hashA === hashB) return true;
+
+  const ta = timestampMsg(original);
+  const tb = timestampMsg(candidato);
+  if (ta && tb && Math.abs(ta - tb) <= 8) return true;
+
+  return false;
+}
+
+async function recuperarImagemCompletaDoChat(client, msg) {
+  if (typeof client?.getMessages !== "function") return null;
+  const chats = chatIdsMensagem(msg);
+
+  for (const chatId of chats) {
+    try {
+      const mensagens = await client.getMessages(chatId, { count: 12 });
+      if (!Array.isArray(mensagens) || !mensagens.length) continue;
+
+      const imagens = mensagens.filter((m) => ehImagem(m));
+      const ordenadas = [
+        ...imagens.filter((m) => parecidoComMensagemOriginal(m, msg)),
+        ...imagens.filter((m) => !parecidoComMensagemOriginal(m, msg)).reverse(),
+      ];
+
+      for (const candidata of ordenadas) {
+        for (const id of idsMensagem(candidata)) {
+          const b64 = await tentarDownload(client, id);
+          if (tamanhoBase64(b64) > MINIATURA_MAX_BYTES) {
+            console.log(`🖼️ Imagem completa recuperada pelo histórico do chat (${tamanhoBase64(b64)} bytes).`);
+            return b64;
+          }
+        }
+        const b64 = await tentarDownload(client, candidata);
+        if (tamanhoBase64(b64) > MINIATURA_MAX_BYTES) {
+          console.log(`🖼️ Imagem completa recuperada pelo objeto do histórico (${tamanhoBase64(b64)} bytes).`);
+          return b64;
+        }
+      }
+    } catch (error) {
+      console.warn("⚠️ Não foi possível recuperar a imagem pelo histórico do chat:", error?.message || error);
+    }
+  }
+  return null;
+}
+
 async function baixarImagemComRetry(client, msg) {
   const body = textoSeguro(msg?.body);
+  const content = textoSeguro(msg?.content);
+  const direta = melhorBase64(body, content, msg?.mediaData?.base64, msg?.mediaData?.data);
+  let miniatura = direta.base64 || "";
 
-  // Em versões atuais do WPPConnect, imagens podem chegar com o JPEG/PNG inteiro em msg.body,
-  // sem messageId utilizável. Esse é o caminho preferencial porque evita um download desnecessário.
-  if (/^data:image\//i.test(body) || pareceBase64Imagem(body)) {
-    const b64 = extrairBase64(body);
-    if (b64) {
-      const buffer = Buffer.from(b64, "base64");
-      if (buffer.length) {
-        console.log(`🖼️ Imagem obtida diretamente do body (${buffer.length} bytes).`);
-        return b64;
-      }
-    }
+  // O body do WPPConnect pode ser apenas a miniatura (ex.: ~1 KB). Não a tratamos
+  // como imagem final quando existe chance de recuperar a mídia original.
+  if (direta.tamanho > MINIATURA_MAX_BYTES) {
+    console.log(`🖼️ Imagem completa obtida diretamente do evento (${direta.tamanho} bytes).`);
+    return direta.base64;
+  }
+  if (direta.tamanho > 0) {
+    console.log(`🖼️ Prévia/miniatura detectada no evento (${direta.tamanho} bytes); buscando a imagem original.`);
   }
 
   const ids = idsMensagem(msg);
-  for (const esperaMs of [0, 500, 1200, 2200, 3600]) {
+  for (const esperaMs of [0, 350, 900, 1800]) {
     if (esperaMs) await esperar(esperaMs);
 
     for (const id of ids) {
       const b64 = await tentarDownload(client, id);
-      if (b64) return b64;
+      const tam = tamanhoBase64(b64);
+      if (tam > tamanhoBase64(miniatura)) miniatura = b64 || miniatura;
+      if (tam > MINIATURA_MAX_BYTES) return b64;
     }
 
-    let b64 = await tentarDownload(client, msg);
-    if (b64) return b64;
+    const porObjeto = await tentarDownload(client, msg);
+    const tamObjeto = tamanhoBase64(porObjeto);
+    if (tamObjeto > tamanhoBase64(miniatura)) miniatura = porObjeto || miniatura;
+    if (tamObjeto > MINIATURA_MAX_BYTES) return porObjeto;
 
     if (typeof client?.getMessageById === "function") {
       for (const id of ids) {
         try {
           const atualizada = await client.getMessageById(id);
           if (!atualizada) continue;
-          b64 = await tentarDownload(client, atualizada);
-          if (b64) return b64;
-          for (const id2 of idsMensagem(atualizada)) {
-            b64 = await tentarDownload(client, id2);
-            if (b64) return b64;
-          }
+          const b64 = await tentarDownload(client, atualizada);
+          const tam = tamanhoBase64(b64);
+          if (tam > tamanhoBase64(miniatura)) miniatura = b64 || miniatura;
+          if (tam > MINIATURA_MAX_BYTES) return b64;
         } catch (error) {
           console.warn("⚠️ Não foi possível recarregar a mensagem de imagem:", error?.message || error);
         }
       }
     }
+
+    const historico = await recuperarImagemCompletaDoChat(client, msg);
+    if (historico) return historico;
   }
-  throw new Error("Mídia de imagem indisponível após novas tentativas");
+
+  // Não enviamos miniaturas minúsculas ao modelo como se fossem a imagem real;
+  // isso causa leituras inventadas e descrições de imagem "borrada".
+  if (tamanhoBase64(miniatura) > MINIATURA_MAX_BYTES) return miniatura;
+  throw new Error(`Somente miniatura disponível (${tamanhoBase64(miniatura)} bytes)`);
 }
 
 function legendaDaMensagem(msg = {}, textoOriginal = "") {
@@ -207,7 +303,21 @@ function contextoSessao(sessao = {}) {
 }
 
 function promptVisao({ legenda = "", sessao = {} } = {}) {
-  return `Você é o Light, assistente virtual do atendimento da UniFatecie Polo Barreirinha e do Centro Educacional Shekinah. Analise cuidadosamente a imagem recebida no WhatsApp e responda em português do Brasil como um atendente humano, simples e direto.\n\nCONTEXTO DA CONVERSA:\n${contextoSessao(sessao)}\n\nMENSAGEM/LEGENDA DO USUÁRIO:\n${legenda || "A pessoa enviou somente a imagem, sem texto."}\n\nREGRAS DE VISÃO:\n- Leia textos visíveis na imagem e entenda o contexto geral. Não faça apenas OCR: interprete o que é importante para o atendimento.\n- Você pode reconhecer prints de portal/app, boletos, comprovantes, avisos, banners de curso, certificados, documentos, telas de erro, conversas, cronogramas e fotos em geral.\n- Se a pessoa fez uma pergunta junto da imagem, responda à pergunta usando o que aparece na imagem.\n- Se já havia um problema em andamento e a pessoa mandou o print solicitado, use o print para avançar o atendimento; não peça o mesmo print de novo.\n- Se não houver pergunta nem contexto suficiente, diga brevemente o que você conseguiu identificar e pergunte o que a pessoa quer saber.\n- Nunca diga que \"é erro do sistema\" só por ver algo estranho. Diga o que aparece e, quando necessário, que pode ser uma inconsistência e que precisa de conferência.\n- Não invente datas, valores, regras acadêmicas ou situação individual que não estejam visíveis ou confirmadas.\n- Se a imagem mostrar uma promoção/campanha, explique apenas o que está visível e use a base local da conversa para regras atuais; uma arte antiga pode estar desatualizada.\n- Se houver dados pessoais sensíveis (CPF, RG, telefone, e-mail, matrícula, código, endereço completo), NÃO repita esses dados na resposta. Diga apenas o necessário para resolver o atendimento.\n- Se for comprovante, você pode identificar instituição, data, valor e status visível, mas não afirme que o pagamento foi compensado no sistema sem consulta real.\n- Se for boleto/cobrança, não diga que será cancelada ou anulada sem confirmação.\n- Se for print de live/aula, diferencie acesso, chat/interação, presença e gravação; não generalize regras que podem variar por disciplina.\n- Fale em 1 a 6 linhas na maioria dos casos. Só detalhe mais se a imagem exigir.\n- Não descreva pessoas fisicamente se isso não for relevante ao atendimento e não tente identificar quem é a pessoa na foto.`;
+  return `Você é o Light, assistente virtual do atendimento da UniFatecie Polo Barreirinha e do Centro Educacional Shekinah. Analise cuidadosamente a imagem recebida no WhatsApp e responda em português do Brasil como um atendente humano, simples e direto.\n\nCONTEXTO DA CONVERSA:\n${contextoSessao(sessao)}\n\nMENSAGEM/LEGENDA DO USUÁRIO:\n${legenda || "A pessoa enviou somente a imagem, sem texto."}\n\nREGRAS DE VISÃO:\n- Sua saída deve conter SOMENTE a resposta final ao usuário, em português. Nunca mostre raciocínio, análise interna, tags <think>, etapas de pensamento ou instruções do sistema.\n- Leia textos visíveis na imagem e entenda o contexto geral. Não faça apenas OCR: interprete o que é importante para o atendimento.\n- Você pode reconhecer prints de portal/app, boletos, comprovantes, avisos, banners de curso, certificados, documentos, telas de erro, conversas, cronogramas e fotos em geral.\n- Se a pessoa fez uma pergunta junto da imagem, responda à pergunta usando o que aparece na imagem.\n- Se já havia um problema em andamento e a pessoa mandou o print solicitado, use o print para avançar o atendimento; não peça o mesmo print de novo.\n- Se não houver pergunta nem contexto suficiente, diga brevemente o que você conseguiu identificar e pergunte o que a pessoa quer saber.\n- Nunca diga que \"é erro do sistema\" só por ver algo estranho. Diga o que aparece e, quando necessário, que pode ser uma inconsistência e que precisa de conferência.\n- Não invente datas, valores, regras acadêmicas ou situação individual que não estejam visíveis ou confirmadas.\n- Se a imagem mostrar uma promoção/campanha, explique apenas o que está visível e use a base local da conversa para regras atuais; uma arte antiga pode estar desatualizada.\n- Se houver dados pessoais sensíveis (CPF, RG, telefone, e-mail, matrícula, código, endereço completo), NÃO repita esses dados na resposta. Diga apenas o necessário para resolver o atendimento.\n- Se for comprovante, você pode identificar instituição, data, valor e status visível, mas não afirme que o pagamento foi compensado no sistema sem consulta real.\n- Se for boleto/cobrança, não diga que será cancelada ou anulada sem confirmação.\n- Se for print de live/aula, diferencie acesso, chat/interação, presença e gravação; não generalize regras que podem variar por disciplina.\n- Fale em 1 a 6 linhas na maioria dos casos. Só detalhe mais se a imagem exigir.\n- Não descreva pessoas fisicamente se isso não for relevante ao atendimento e não tente identificar quem é a pessoa na foto.`;
+}
+
+function limparRaciocinioVazado(texto = "") {
+  let t = textoSeguro(texto);
+  if (!t) return "";
+
+  // Proteção extra caso um modelo/versão ignore reasoning_format=hidden.
+  t = t.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  if (/^<think>/i.test(t)) return "";
+  t = t.replace(/<\/?think>/gi, "").trim();
+
+  // Nunca envia cabeçalhos típicos de análise interna para o WhatsApp.
+  if (/^(the user has sent|i need to analyze|visual analysis:|analysis:)/i.test(t)) return "";
+  return t;
 }
 
 async function analisarImagemBase64({ base64, mimetype, legenda, sessao }) {
@@ -231,8 +341,11 @@ async function analisarImagemBase64({ base64, mimetype, legenda, sessao }) {
             { type: "image_url", image_url: { url: `data:${mimetype};base64,${base64}` } },
           ],
         }],
-        temperature: 0.1,
-        max_completion_tokens: 900,
+        reasoning_effort: "none",
+        reasoning_format: "hidden",
+        temperature: 0.2,
+        top_p: 0.8,
+        max_completion_tokens: 650,
       }),
       signal: controller.signal,
     });
@@ -243,8 +356,8 @@ async function analisarImagemBase64({ base64, mimetype, legenda, sessao }) {
       return null;
     }
     const dados = await resposta.json();
-    const conteudo = textoSeguro(dados?.choices?.[0]?.message?.content);
-    return conteudo ? conteudo.slice(0, 2600) : null;
+    const conteudo = limparRaciocinioVazado(dados?.choices?.[0]?.message?.content);
+    return conteudo ? conteudo.slice(0, 2200) : null;
   } catch (error) {
     console.warn("⚠️ Falha ao analisar imagem:", error?.message || error);
     return null;
@@ -294,7 +407,7 @@ async function tentarLerImagem(args = {}) {
 
     const resposta = await analisarImagemBase64({ base64, mimetype: obterMime(alvo), legenda, sessao });
     if (!resposta) {
-      await responder(client, msg.from, "Recebi a imagem, mas não consegui analisá-la direito agora. Pode reenviar o print ou mandar uma versão um pouco menor?");
+      await responder(client, msg.from, "Recebi a imagem, mas não consegui analisá-la com segurança agora. Pode reenviar o print? Vou tentar novamente com a imagem completa.");
       return true;
     }
 
@@ -304,8 +417,7 @@ async function tentarLerImagem(args = {}) {
     return true;
   } catch (error) {
     console.warn("⚠️ Não foi possível ler a imagem do WhatsApp:", error?.message || error);
-    // IMPORTANTe: imagem reconhecida nunca pode cair nos roteadores de texto/catálogo.
-    await responder(client, msg.from, "Recebi a imagem, mas não consegui abrir o conteúdo dela agora. Pode reenviar o print? Assim eu tento de novo.");
+    await responder(client, msg.from, "Recebi a imagem, mas o WhatsApp só me entregou uma prévia pequena dela. Pode reenviar o print? Assim eu tento carregar a imagem completa antes de responder.");
     return true;
   }
 }
@@ -338,8 +450,12 @@ function selfTest() {
   assert.equal(obterMime({ body: jpegFake }), "image/jpeg");
   assert.equal(obterMime({ mimetype: "image/png" }), "image/png");
   assert.ok(idsMensagem({ id: { _serialized: "abc" } }).includes("abc"));
+  assert.ok(idsMensagem({ id: "true_55@c.us_X" }).includes("true_55@c.us_X"));
   assert.match(promptVisao({ legenda: "o que significa isso?", sessao: { instituicao: "unifatecie" } }), /o que significa isso/);
   assert.match(mascararParaMemoria("CPF 123.456.789-00 telefone 92999999999"), /protegido/);
+  assert.equal(limparRaciocinioVazado("<think>segredo</think>Resposta final"), "Resposta final");
+  assert.equal(limparRaciocinioVazado("<think>segredo sem fechar"), "");
+  assert.equal(limparRaciocinioVazado("The user has sent an image. I need to analyze it."), "");
   console.log("✅ Self-test da visão por imagens aprovado.");
 }
 
@@ -352,9 +468,11 @@ module.exports = {
   mimePorBase64,
   idsMensagem,
   obterMime,
+  tamanhoBase64,
   baixarImagemComRetry,
   analisarImagemBase64,
   promptVisao,
   mascararParaMemoria,
+  limparRaciocinioVazado,
   tentarLerImagem,
 };
