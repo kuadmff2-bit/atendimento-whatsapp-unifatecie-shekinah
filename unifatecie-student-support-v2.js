@@ -1,6 +1,13 @@
 const Module = require("module");
 const originalLoad = Module._load;
+
+// O núcleo-base possui um self-test legado. Ao testar esta camada v2, removemos
+// temporariamente a flag para impedir que o teste antigo rode durante o require.
+const argvOriginal = process.argv;
+const executandoSelfTestV2 = argvOriginal.includes("--self-test");
+if (executandoSelfTestV2) process.argv = argvOriginal.filter((arg) => arg !== "--self-test");
 const Base = require("./unifatecie-student-support");
+if (executandoSelfTestV2) process.argv = argvOriginal;
 
 function norm(texto = "") { return Base.norm(texto); }
 
@@ -16,6 +23,11 @@ function emFluxoObrigatorio(sessao = {}) {
 function detectarIntencao(texto = "", sessao = {}) {
   const t = norm(texto);
   if (!t) return null;
+
+  // Uma intenção explicitamente da Shekinah nunca deve ser sequestrada pelo suporte UniFatecie.
+  if (/\b(shekinah|centro educacional)\b/.test(t) && !/\b(unifatecie|fatecie|alunonet|gendocs)\b/.test(t)) {
+    return null;
+  }
 
   // Intenções mais específicas precisam vencer palavras genéricas como prova, atividade e disciplina.
   if (/\b(nota|notas|media|boletim|resultado)\b/.test(t) &&
@@ -119,6 +131,7 @@ function selfTest() {
   assert.equal(detectarIntencao("Como vejo se meu diploma foi liberado?", s), "certificado_diploma");
   assert.equal(detectarIntencao("Quero saber os cursos", s), null);
   assert.equal(detectarIntencao("Já paguei e continua aparecendo em atraso", s), null);
+  assert.equal(detectarIntencao("Preciso de declaração da Shekinah", s), null);
   console.log("✅ Self-test do suporte ao aluno v2 aprovado.");
 }
 
