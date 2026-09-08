@@ -104,8 +104,9 @@ async function tentarSuporteAluno(args = {}) {
   if (!sessao || !msg || typeof responder !== "function") return false;
   if (emFluxoObrigatorio(sessao)) return false;
 
-  // Imagens continuam sendo tratadas pelo núcleo-base, que preserva o contexto do atendimento.
-  if (Base.ehImagem(msg)) return false;
+  // Prints entram no mesmo contexto de suporte; o núcleo-base registra a imagem
+  // e pede uma descrição curta/áudio quando não houver informação textual suficiente.
+  if (Base.ehImagem(msg)) return Base.tentarSuporteAluno(args);
 
   const texto = String(textoOriginal || "").trim();
   if (!texto) return false;
