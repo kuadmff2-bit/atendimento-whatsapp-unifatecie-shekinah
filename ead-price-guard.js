@@ -2,9 +2,9 @@ const Module = require("module");
 const originalLoad = Module._load;
 
 const OFERTA = Object.freeze({
-  avista: "R$ 300,00",
-  parcela: "R$ 160,00",
-  totalParcelado: "R$ 320,00",
+  avista: "R$ 250,00",
+  parcela: "R$ 150,00",
+  totalParcelado: "R$ 300,00",
   parcelas: 2,
   brindes: 2,
 });
@@ -44,10 +44,10 @@ function cursoAtual(sessao = {}, mensagem = "") {
 function respostaValor(curso) {
   return `💰 *${curso} — EAD Shekinah*\n\n` +
     `💵 À vista: *${OFERTA.avista}*\n` +
-    `🎁 Pagando à vista, você ganha *+${OFERTA.brindes} cursos EAD* de sua escolha como brinde.\n\n` +
+    `🎁 Pagando à vista, você ganha *+${OFERTA.brindes} cursos EAD* da sua preferência como brinde.\n\n` +
     `💳 Parcelado: *${OFERTA.parcelas}x de ${OFERTA.parcela}*\n` +
-    `• 1ª parcela no início\n` +
-    `• 2ª parcela no fim do curso\n` +
+    `• 1ª parcela no início do curso\n` +
+    `• 2ª parcela no final do curso\n` +
     `• Total parcelado: *${OFERTA.totalParcelado}*\n\n` +
     `🔓 O acesso é liberado após a confirmação do pagamento à vista ou da 1ª parcela.`;
 }
@@ -63,6 +63,23 @@ function respostaComPrecoDaPlataforma(mensagem = "") {
   const t = norm(mensagem);
   return t.includes("valor cadastrado na plataforma")
     || /\bvalor\b.*\br\$\s*\d/.test(t);
+}
+
+function sanitizarPrecoEmDetalhes(mensagem = "", sessao = {}) {
+  let texto = String(mensagem || "");
+  if (!contextoEadShekinah(sessao)) return texto;
+
+  // Remove preço individual vindo da plataforma e aplica a regra comercial única da Shekinah EAD.
+  texto = texto.replace(/\n?💰\s*\*?Valor:?\*?\s*R\$\s*[\d.,]+(?:\s*em até\s*\d+\s*parcela\(s\))?/gi,
+    `\n💰 *Valor:* ${OFERTA.avista} à vista ou ${OFERTA.parcelas}x de ${OFERTA.parcela}`);
+
+  // Elimina referências à regra comercial anterior caso alguma resposta antiga escape de outro módulo.
+  texto = texto
+    .replace(/R\$\s*300,00\s*à vista/gi, OFERTA.avista + " à vista")
+    .replace(/2x\s*de\s*R\$\s*160,00/gi, `${OFERTA.parcelas}x de ${OFERTA.parcela}`)
+    .replace(/total parcelado:?\s*\*?R\$\s*320,00\*?/gi, `total parcelado: *${OFERTA.totalParcelado}*`);
+
+  return texto;
 }
 
 function deveAplicar({ textoOriginal = "", sessao = {}, mensagem = "" }) {
@@ -96,7 +113,9 @@ Module._load = function (request, parent, isMain) {
               const curso = cursoAtual(args.sessao, mensagem);
               return responderOriginal(client, destino, respostaValor(curso));
             }
-            return responderOriginal(client, destino, mensagem);
+
+            const segura = sanitizarPrecoEmDetalhes(mensagem, args.sessao || {});
+            return responderOriginal(client, destino, segura);
           }
         : responderOriginal;
 
@@ -125,12 +144,13 @@ function selfTest() {
     sessao,
     mensagem: "A plataforma não retornou um valor cadastrado para Operador de Caixa nesta consulta. Não vou inventar um preço.",
   }), true);
+  assert.match(respostaValor("Operador de Caixa"), /R\$ 250,00/);
+  assert.match(respostaValor("Operador de Caixa"), /2x de R\$ 150,00/);
   assert.match(respostaValor("Operador de Caixa"), /R\$ 300,00/);
-  assert.match(respostaValor("Operador de Caixa"), /2x de R\$ 160,00/);
-  assert.match(respostaValor("Operador de Caixa"), /R\$ 320,00/);
+  assert.match(respostaValor("Operador de Caixa"), /\+2 cursos EAD/);
   console.log("✅ Self-test do valor EAD Shekinah aprovado.");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
 
-module.exports = { perguntaValor, contextoEadShekinah, respostaValor, deveAplicar };
+module.exports = { perguntaValor, contextoEadShekinah, respostaValor, deveAplicar, sanitizarPrecoEmDetalhes };
