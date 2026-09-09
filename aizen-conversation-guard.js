@@ -1,6 +1,10 @@
+const fs = require("fs");
+const path = require("path");
+const Module = require("module");
 const conversa = require("./conversation-core-ext");
 
 const NOME_PUBLICO = "Aizen";
+const CAMINHO_INDEX = path.resolve(__dirname, "index.js");
 
 function normalizar(texto = "") {
   return String(texto || "")
@@ -30,6 +34,45 @@ function mensagemIdentidade() {
 function mensagemSaudacao() {
   return "🤖 Oi! Eu sou o *Aizen* 😊 Como posso te ajudar?";
 }
+
+function corrigirFonteIndexAizen(codigo = "") {
+  return String(codigo || "")
+    .replace(
+      "🤖 Eu sou o *Light*, assistente virtual da *UniFatecie Polo Barreirinha* e do *Centro Educacional Shekinah*. 😊",
+      "🤖 Eu sou o *Aizen*, assistente virtual da *UniFatecie Polo Barreirinha* e do *Centro Educacional Shekinah*. 😊"
+    )
+    .replace(
+      "🤖 Olá! Eu sou o *Light*, assistente da *UniFatecie Polo Barreirinha* e da *Shekinah*. 😊 Como posso ajudar?",
+      "🤖 Olá! Eu sou o *Aizen*, assistente da *UniFatecie Polo Barreirinha* e da *Shekinah*. 😊 Como posso ajudar?"
+    )
+    .replace(
+      "voltar pro light|voltar para o light",
+      "voltar pro light|voltar para o light|voltar pro aizen|voltar para o aizen"
+    );
+}
+
+function instalarProtecaoFonteIndex() {
+  if (Module.__aizenIndexSourceGuard) return;
+
+  const extensaoJsOriginal = Module._extensions[".js"];
+  Module._extensions[".js"] = function (modulo, filename) {
+    if (path.resolve(filename) === CAMINHO_INDEX) {
+      const fonteOriginal = fs.readFileSync(filename, "utf8");
+      const fonteCorrigida = corrigirFonteIndexAizen(fonteOriginal);
+      if (fonteCorrigida !== fonteOriginal) {
+        console.log("🛡️ Identidade Aizen aplicada também ao roteador principal.");
+      } else {
+        console.warn("⚠️ Guarda Aizen não encontrou os textos legados no index principal.");
+      }
+      return modulo._compile(fonteCorrigida, filename);
+    }
+    return extensaoJsOriginal(modulo, filename);
+  };
+
+  Object.defineProperty(Module, "__aizenIndexSourceGuard", { value: true });
+}
+
+instalarProtecaoFonteIndex();
 
 if (!conversa.__aizenConversationGuard && typeof conversa.tentarConversaNatural === "function") {
   const original = conversa.tentarConversaNatural;
@@ -70,7 +113,13 @@ function selfTest() {
   assert.match(mensagemIdentidade(), /Aizen/);
   assert.doesNotMatch(mensagemIdentidade(), /Light/);
   assert.match(mensagemSaudacao(), /Aizen/);
-  console.log("✅ Self-test da conversa Aizen aprovado.");
+
+  const fonteTeste = `await responder(client,msg.from,"🤖 Eu sou o *Light*, assistente virtual da *UniFatecie Polo Barreirinha* e do *Centro Educacional Shekinah*. 😊");\nawait responder(client,msg.from,"🤖 Olá! Eu sou o *Light*, assistente da *UniFatecie Polo Barreirinha* e da *Shekinah*. 😊 Como posso ajudar?");`;
+  const fonteCorrigida = corrigirFonteIndexAizen(fonteTeste);
+  assert.doesNotMatch(fonteCorrigida, /Eu sou o \*Light\*/);
+  assert.match(fonteCorrigida, /Eu sou o \*Aizen\*/);
+
+  console.log("✅ Self-test da conversa Aizen aprovado, incluindo o roteador principal.");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
@@ -82,4 +131,6 @@ module.exports = {
   ehSaudacao,
   mensagemIdentidade,
   mensagemSaudacao,
+  corrigirFonteIndexAizen,
+  instalarProtecaoFonteIndex,
 };
