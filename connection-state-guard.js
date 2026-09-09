@@ -13,8 +13,8 @@ function patchLegacy(codigo = "") {
   let out = String(codigo);
 
   // Não chamar getConnectionState() em loop durante a inicialização. Esse
-  // polling estava monopolizando o canal do Puppeteer/CDP e atrasando a
-  // exposição dos eventos do WPPConnect por vários minutos.
+  // polling monopolizava o canal do Puppeteer/CDP e atrasava os eventos do
+  // WPPConnect por vários minutos.
   if (out.includes("      waitForLogin: false,")) {
     out = out.replace("      waitForLogin: false,", "      waitForLogin: true,");
   }
@@ -31,14 +31,14 @@ function patchLegacy(codigo = "") {
     );
   }
 
-  // Em versões atuais do WhatsApp Web, uma conversa recebida pode chegar como
-  // @lid. Converter esse identificador para @c.us antes de responder pode
-  // deixar sendText pendurado. Para respostas ao próprio chat, preserve o LID.
-  const responderAntigo = `async function responder(client, destino, mensagem) {\n  await delay(900);\n\n  const destinoResolvido = await resolverDestino(client, destino);\n  return enviarTextoDireto(client, destinoResolvido, mensagem);\n}`;
+  // Conversas privadas podem chegar como @lid. O chat que originou a mensagem
+  // deve ser respondido usando o MESMO identificador; converter para @c.us
+  // antes do sendText pode deixar o envio pendurado nas versões atuais do WA.
+  const regexResponder = /async function responder\(client, destino, mensagem\) \{[\s\S]*?\n\}/;
   const responderNovo = `async function responder(client, destino, mensagem) {\n  await delay(350);\n\n  const destinoOriginal = String(destino || \"\");\n  const destinoResposta = destinoOriginal.endsWith(\"@lid\")\n    ? destinoOriginal\n    : await resolverDestino(client, destinoOriginal);\n\n  if (destinoOriginal.endsWith(\"@lid\")) {\n    console.log(\"📨 Respondendo diretamente ao chat LID: \" + destinoResposta);\n  }\n\n  return enviarTextoDireto(client, destinoResposta, mensagem);\n}`;
 
-  if (out.includes(responderAntigo)) {
-    out = out.replace(responderAntigo, responderNovo);
+  if (regexResponder.test(out)) {
+    out = out.replace(regexResponder, responderNovo);
   } else {
     console.warn("⚠️ Guarda LID: função responder não encontrada para ajuste.");
   }
@@ -57,8 +57,8 @@ function patchIaGroq(codigo = "") {
   const historicoNovo = `    ...historico.slice(-LIMITE_HISTORICO).map((m) => ({\n      role: m?.role === \"assistant\" ? \"assistant\" : \"user\",\n      content: String(m?.content || \"\").slice(-1200),\n    })),`;
   if (out.includes(historicoAntigo)) out = out.replace(historicoAntigo, historicoNovo);
 
-  // Não tente browser_search só porque o modelo principal falhou. Isso gerava
-  // uma segunda requisição grande/413 em mensagens simples como "Teste Aizen".
+  // Só usa browser_search quando a pergunta realmente pede informação externa.
+  // Uma falha simples da IA não deve gerar uma segunda requisição 413.
   const webAntigo = "  if (!resposta || pareceSemInformacao(resposta) || perguntaPodePrecisarDeWeb(texto)) {";
   const webNovo = "  if (perguntaPodePrecisarDeWeb(texto) || (resposta && pareceSemInformacao(resposta))) {";
   if (out.includes(webAntigo)) out = out.replace(webAntigo, webNovo);
@@ -77,7 +77,7 @@ Module.prototype._compile = function (content, filename) {
 function selfTest() {
   const assert = require("assert");
 
-  const baseLegacy = `async function iniciar() {\n    const puppeteerOptions = { timeout: 120000 };\n      waitForLogin: true,\n      deviceSyncTimeout: 0,\n    whatsappConectado = true;\n  }\n\nasync function responder(client, destino, mensagem) {\n  await delay(900);\n\n  const destinoResolvido = await resolverDestino(client, destino);\n  return enviarTextoDireto(client, destinoResolvido, mensagem);\n}`;
+  const baseLegacy = `async function iniciar() {\n    const puppeteerOptions = { timeout: 120000 };\n      waitForLogin: true,\n      deviceSyncTimeout: 0,\n    whatsappConectado = true;\n  }\n\nasync function responder(client, destino, mensagem) {\n  await delay(900);\n  const destinoResolvido = await resolverDestino(client, destino);\n  return enviarTextoDireto(client, destinoResolvido, mensagem);\n}`;
   const novoLegacy = patchLegacy(baseLegacy);
   assert.match(novoLegacy, /waitForLogin: true/);
   assert.doesNotMatch(novoLegacy, /waitForLogin: false/);
