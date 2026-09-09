@@ -1,6 +1,8 @@
 const Module = require("module");
 const originalLoad = Module._load;
 
+const UNIFATECIE_SUPPORT_NUMBER = "559291572214";
+
 function norm(texto = "") {
   return String(texto)
     .trim()
@@ -32,9 +34,8 @@ function pediuHumanoUniFatecie(texto = "", sessao = {}) {
   return false;
 }
 
-function destinoAdmin() {
-  const numero = String(process.env.BOT_ADMIN_PHONE || "").replace(/\D/g, "");
-  return numero ? `${numero}@c.us` : "";
+function destinoSuporteUnifatecie() {
+  return `${UNIFATECIE_SUPPORT_NUMBER}@c.us`;
 }
 
 function nomeContato(msg = {}) {
@@ -61,7 +62,7 @@ function identificadorContato(msg = {}) {
 }
 
 async function notificarAdmin(client, msg, textoOriginal) {
-  const destino = destinoAdmin();
+  const destino = destinoSuporteUnifatecie();
   if (!destino || typeof client?.sendText !== "function") return false;
 
   const minutos = minutosInatividadeHumana();
@@ -72,16 +73,17 @@ async function notificarAdmin(client, msg, textoOriginal) {
     `📱 Identificador: ${identificadorContato(msg)}`,
     `💬 Pedido: ${String(textoOriginal || "").trim().slice(0, 500)}`,
     "",
-    "O Light foi pausado nesta conversa. Responda manualmente pelo WhatsApp do atendimento.",
+    "O Light foi pausado nesta conversa. Faça o atendimento pelo número secundário da UniFatecie.",
     `Se a conversa ficar *${minutos} minutos sem receber novas mensagens*, o Light volta automaticamente no próximo contato.`,
     "Também é possível reativar antes com *m*, *menu* ou *retomar bot*.",
   ].join("\n");
 
   try {
     await client.sendText(destino, aviso);
+    console.log(`📨 Pedido de atendimento humano UniFatecie encaminhado para ${UNIFATECIE_SUPPORT_NUMBER}.`);
     return true;
   } catch (error) {
-    console.warn("⚠️ Não foi possível notificar BOT_ADMIN_PHONE:", error?.message || error);
+    console.warn("⚠️ Não foi possível notificar o número secundário da UniFatecie:", error?.message || error);
     return false;
   }
 }
@@ -136,4 +138,10 @@ Module._load = function (request, parent, isMain) {
   return exp;
 };
 
-module.exports = { pediuHumanoUniFatecie, notificarAdmin, minutosInatividadeHumana };
+module.exports = {
+  UNIFATECIE_SUPPORT_NUMBER,
+  destinoSuporteUnifatecie,
+  pediuHumanoUniFatecie,
+  notificarAdmin,
+  minutosInatividadeHumana
+};
