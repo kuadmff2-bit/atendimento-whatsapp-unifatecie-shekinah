@@ -31,12 +31,14 @@ function patchLegacy(codigo = "") {
     );
   }
 
-  // Quando há um número configurado, usa o fluxo de vinculação por código do
-  // próprio WPPConnect em vez de depender de um QR que pode expirar/rotacionar.
+  // O número serve apenas para o PRIMEIRO vínculo. Depois que o perfil do
+  // WhatsApp já existe no volume persistente, passar phoneNumber novamente
+  // força o WPPConnect a iniciar outro login por código e pode travar a
+  // restauração de uma sessão que já está autenticada.
   const alvoCriacaoCliente =
     '    const client = await wppconnect.create({\n      session: "atendimento-unifatecie-shekinah",';
   if (out.includes(alvoCriacaoCliente)) {
-    const criacaoComCodigo = `    const numeroVinculacaoAizen = String(process.env.AIZEN_PHONE_NUMBER || \"\").trim();\n    if (numeroVinculacaoAizen) {\n      console.log(\"📱 Login do Aizen por código de vinculação ativado.\");\n    }\n\n    const client = await wppconnect.create({\n      session: \"atendimento-unifatecie-shekinah\",\n      ...(numeroVinculacaoAizen\n        ? {\n            phoneNumber: numeroVinculacaoAizen,\n            catchLinkCode: (codigo) => {\n              const linkCode = String(codigo || \"\").trim();\n              if (linkCode) console.log(\"🔗 AIZEN_LINK_CODE=\" + linkCode);\n            },\n          }\n        : {}),`;
+    const criacaoComCodigo = `    const numeroVinculacaoAizen = String(process.env.AIZEN_PHONE_NUMBER || \"\").trim();\n    const pastaSessaoAizen = path.join(PASTA_TOKENS, \"atendimento-unifatecie-shekinah\");\n    let precisaVincularAizen = Boolean(numeroVinculacaoAizen);\n\n    try {\n      if (\n        precisaVincularAizen &&\n        fs.existsSync(pastaSessaoAizen) &&\n        fs.readdirSync(pastaSessaoAizen).length > 0\n      ) {\n        precisaVincularAizen = false;\n        console.log(\"🔐 Sessão persistida do Aizen encontrada; restaurando sem gerar novo código.\");\n      }\n    } catch (error) {\n      console.warn(\"⚠️ Não foi possível inspecionar a sessão persistida do Aizen:\", error?.message || error);\n    }\n\n    if (precisaVincularAizen) {\n      console.log(\"📱 Primeiro vínculo do Aizen por código de telefone ativado.\");\n    }\n\n    const client = await wppconnect.create({\n      session: \"atendimento-unifatecie-shekinah\",\n      ...(precisaVincularAizen\n        ? {\n            phoneNumber: numeroVinculacaoAizen,\n            catchLinkCode: (codigo) => {\n              const linkCode = String(codigo || \"\").trim();\n              if (linkCode) console.log(\"🔗 AIZEN_LINK_CODE=\" + linkCode);\n            },\n          }\n        : {}),`;
     out = out.replace(alvoCriacaoCliente, criacaoComCodigo);
   } else {
     console.warn("⚠️ Guarda de vinculação: criação do cliente WPPConnect não encontrada.");
@@ -65,7 +67,7 @@ function patchLegacy(codigo = "") {
     console.warn("⚠️ Guarda LID: função responder não encontrada para ajuste.");
   }
 
-  console.log("✅ Inicialização estável do WhatsApp ativa: eventos livres, vínculo por código e envio LID/@c.us com fallback.");
+  console.log("✅ Inicialização estável do WhatsApp ativa: sessão persistida, eventos livres, vínculo só no primeiro acesso e envio LID/@c.us com fallback.");
   return out;
 }
 
@@ -99,7 +101,8 @@ Module.prototype._compile = function (content, filename) {
 // O login por código do WPPConnect 2.3.x usa um ciclo de eventos que ficou
 // preso no WhatsApp Web atual. O WA-JS já oferece uma chamada que retorna o
 // código diretamente; substituímos apenas esse método interno, mantendo todo o
-// restante da sessão do WPPConnect intacto.
+// restante da sessão do WPPConnect intacto. Ele só será chamado no primeiro
+// vínculo, pois sessões persistidas agora pulam phoneNumber na criação.
 function instalarGeradorDiretoDeCodigo() {
   try {
     const moduloHost = require("@wppconnect-team/wppconnect/dist/api/layers/host.layer");
@@ -162,6 +165,10 @@ function selfTest() {
   assert.match(novoLegacy, /deviceSyncTimeout: 180000/);
   assert.match(novoLegacy, /protocolTimeout: 180000/);
   assert.match(novoLegacy, /AIZEN_PHONE_NUMBER/);
+  assert.match(novoLegacy, /pastaSessaoAizen/);
+  assert.match(novoLegacy, /fs\.existsSync\(pastaSessaoAizen\)/);
+  assert.match(novoLegacy, /fs\.readdirSync\(pastaSessaoAizen\)/);
+  assert.match(novoLegacy, /precisaVincularAizen/);
   assert.match(novoLegacy, /phoneNumber: numeroVinculacaoAizen/);
   assert.match(novoLegacy, /catchLinkCode/);
   assert.match(novoLegacy, /AIZEN_LINK_CODE=/);
@@ -178,7 +185,7 @@ function selfTest() {
   assert.match(novaIa, /slice\(-1200\)/);
   assert.doesNotMatch(novaIa, /if \(!resposta \|\| pareceSemInformacao/);
 
-  console.log("✅ Self-test da estabilidade WhatsApp/LID/vínculo direto por código/IA aprovado.");
+  console.log("✅ Self-test da estabilidade WhatsApp/LID/sessão persistida/vínculo direto por código/IA aprovado.");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
