@@ -6,7 +6,7 @@ function instalarFallbackBrowser() {
       throw new Error("ListenerLayer.onMessage não encontrado");
     }
 
-    if (ListenerLayer.prototype.onMessage.__aizenBrowserPollV2) return true;
+    if (ListenerLayer.prototype.onMessage.__aizenBrowserPollV3) return true;
 
     const anterior = ListenerLayer.prototype.onMessage;
 
@@ -17,23 +17,27 @@ function instalarFallbackBrowser() {
       if (page && typeof page.evaluate === "function") {
         Promise.resolve(
           page.evaluate(() => {
-            if (globalThis.__AIZEN_WAPI_POLL_V2__) {
+            if (globalThis.__AIZEN_PRIVATE_EVENTS_V3__) {
               return { ok: true, status: "already-installed" };
             }
 
             const wapi = globalThis.WAPI;
-            const chatStore = globalThis.WPP?.whatsapp?.ChatStore;
-            if (!wapi && !chatStore) {
-              return { ok: false, status: "WAPI-and-ChatStore-unavailable" };
+            const wpp = globalThis.WPP;
+            const chatStore = wpp?.whatsapp?.ChatStore;
+            const msgStore = wpp?.whatsapp?.MsgStore;
+
+            if (!wapi && !chatStore && !msgStore) {
+              return { ok: false, status: "WAPI-ChatStore-MsgStore-unavailable" };
             }
 
             const temUnread = typeof wapi?.getAllUnreadMessages === "function";
             const temNew = typeof wapi?.getAllNewMessages === "function";
             const temProcess = typeof wapi?.processMessageObj === "function";
             const temChatStore = Boolean(chatStore);
+            const temMsgStore = Boolean(msgStore);
+            const temMsgStoreOn = typeof msgStore?.on === "function";
 
-            globalThis.__AIZEN_WAPI_POLL_V2__ = true;
-            const iniciadoEm = Math.floor(Date.now() / 1000) - 30;
+            globalThis.__AIZEN_PRIVATE_EVENTS_V3__ = true;
             const vistos = new Set();
             let rodando = false;
 
@@ -159,22 +163,15 @@ function instalarFallbackBrowser() {
               const texto = body(m) || body(bruto);
               if (!texto) return false;
 
-              const ts = timestamp(m) || timestamp(bruto);
-              if (origem === "chatstore") {
-                if (!ts || ts < iniciadoEm) return false;
-              } else if (ts && ts < iniciadoEm) {
-                return false;
-              }
-
-              const chave = idMensagem(m) || idMensagem(bruto) || [from, ts, texto].join("|");
+              const chave = idMensagem(m) || idMensagem(bruto) || [from, timestamp(m) || timestamp(bruto), texto].join("|");
               if (vistos.has(chave)) return false;
               vistos.add(chave);
 
-              if (vistos.size > 2500) {
+              if (vistos.size > 4000) {
                 let removidos = 0;
                 for (const antiga of vistos) {
                   vistos.delete(antiga);
-                  if (++removidos >= 700) break;
+                  if (++removidos >= 1000) break;
                 }
               }
 
@@ -188,6 +185,54 @@ function instalarFallbackBrowser() {
                 return true;
               }
               return false;
+            };
+
+            // Marca tudo que já estava carregado antes da instalação. Assim o
+            // fallback nunca responde retroativamente a mensagens antigas.
+            const marcarExistentes = () => {
+              let marcadas = 0;
+              for (const m of arrayModelos(msgStore)) {
+                const chave = idMensagem(m);
+                if (chave && !vistos.has(chave)) {
+                  vistos.add(chave);
+                  marcadas += 1;
+                }
+              }
+              return marcadas;
+            };
+
+            const existentes = marcarExistentes();
+
+            // Esta é a fonte mais baixa e estável de mensagens no WhatsApp Web.
+            // O próprio WA-JS usa MsgStore.on('add') para criar chat.new_message.
+            if (temMsgStoreOn) {
+              try {
+                msgStore.on("add", (msg) => {
+                  if (!msg) return;
+                  const processar = () => {
+                    try {
+                      if (msg?.type === "ciphertext" && typeof msg?.once === "function") {
+                        msg.once("change:type", () => queueMicrotask(() => emitir(msg, "msgstore")));
+                      }
+                      queueMicrotask(() => emitir(msg, "msgstore"));
+                    } catch (_) {
+                      setTimeout(() => emitir(msg, "msgstore"), 0);
+                    }
+                  };
+                  processar();
+                });
+              } catch (_) {}
+            }
+
+            const varrerMsgStore = () => {
+              if (!temMsgStore) return 0;
+              let emitidas = 0;
+              const mensagens = arrayModelos(msgStore);
+              const inicio = Math.max(0, mensagens.length - 80);
+              for (let i = inicio; i < mensagens.length; i++) {
+                if (emitir(mensagens[i], "msgstore-poll")) emitidas += 1;
+              }
+              return emitidas;
             };
 
             const varrerChatStore = () => {
@@ -217,7 +262,6 @@ function instalarFallbackBrowser() {
                 for (const chat of chats) {
                   const chatId = wid(chat?.id);
                   const mensagens = arrayModelos(chat?.msgs);
-                  if (!mensagens.length) continue;
                   const inicio = Math.max(0, mensagens.length - 6);
                   for (let i = inicio; i < mensagens.length; i++) {
                     if (emitir(mensagens[i], "chatstore", chatId)) emitidas += 1;
@@ -248,50 +292,68 @@ function instalarFallbackBrowser() {
                 }
 
                 for (const msg of lotes) emitir(msg, "wapi");
+                varrerMsgStore();
                 varrerChatStore();
               } finally {
                 rodando = false;
               }
             };
 
-            const timer = setInterval(() => void varrer(), 1500);
-            globalThis.__AIZEN_WAPI_POLL_TIMER_V2__ = timer;
-            setTimeout(() => void varrer(), 350);
+            const timer = setInterval(() => void varrer(), 1200);
+            globalThis.__AIZEN_PRIVATE_EVENTS_TIMER_V3__ = timer;
+            setTimeout(() => void varrer(), 300);
+
+            let conta = "";
+            try {
+              conta = String(wapi?.getWid?.() || wpp?.whatsapp?.UserPrefs?.getMaybeMeUser?.()?._serialized || "");
+            } catch (_) {}
 
             return {
               ok: true,
-              status: "installed-v2",
+              status: "installed-v3",
+              conta,
+              existentes,
               temUnread,
               temNew,
               temProcess,
               temChatStore,
+              temMsgStore,
+              temMsgStoreOn,
             };
           })
         )
           .then((resultado) => {
             if (resultado?.ok) {
               console.log(
-                "📡 Fallback de mensagens privado ativo: WAPI + varredura direta do ChatStore.",
+                "📡 Captura privada V3 ativa: MsgStore(add) + MsgStore polling + ChatStore + WAPI.",
                 resultado.status || ""
               );
+              console.log(
+                "📱 Conta WhatsApp da sessão:",
+                resultado.conta || "não identificada",
+                "| MsgStore.on=",
+                Boolean(resultado.temMsgStoreOn),
+                "| mensagens-base=",
+                resultado.existentes
+              );
             } else {
-              console.warn("⚠️ Fallback interno não pôde ser ativado:", resultado?.status || resultado);
+              console.warn("⚠️ Captura privada V3 não pôde ser ativada:", resultado?.status || resultado);
             }
           })
           .catch((error) => {
-            console.warn("⚠️ Falha ao instalar fallback interno:", error?.message || error);
+            console.warn("⚠️ Falha ao instalar captura privada V3:", error?.message || error);
           });
       }
 
       return retorno;
     }
 
-    onMessageComFallbackBrowser.__aizenBrowserPollV2 = true;
+    onMessageComFallbackBrowser.__aizenBrowserPollV3 = true;
     ListenerLayer.prototype.onMessage = onMessageComFallbackBrowser;
-    console.log("📡 Fallback privado WAPI/ChatStore preparado no ListenerLayer.");
+    console.log("📡 Captura privada V3 preparada diretamente no MsgStore.");
     return true;
   } catch (error) {
-    console.warn("⚠️ Não foi possível preparar fallback privado:", error?.message || error);
+    console.warn("⚠️ Não foi possível preparar captura privada V3:", error?.message || error);
     return false;
   }
 }
@@ -301,7 +363,7 @@ const preparado = instalarFallbackBrowser();
 function selfTest() {
   const assert = require("assert");
   assert.equal(typeof preparado, "boolean");
-  console.log("✅ Self-test do fallback WAPI/ChatStore aprovado.");
+  console.log("✅ Self-test da captura privada V3 aprovado.");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
