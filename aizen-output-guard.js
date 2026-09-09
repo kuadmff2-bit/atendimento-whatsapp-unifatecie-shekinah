@@ -9,13 +9,14 @@ function corrigirNomePublico(texto) {
   let saida = texto;
 
   // Corrige formas explícitas de autoidentificação herdadas de camadas antigas.
+  // O asterisco é opcional porque algumas respostas usam negrito do WhatsApp.
   const padroes = [
-    [/\bEu sou o \*?Light\*?\b/gi, "Eu sou o Aizen"],
-    [/\bEu sou \*?Light\*?\b/gi, "Eu sou Aizen"],
-    [/\bMeu nome é \*?Light\*?\b/gi, "Meu nome é Aizen"],
-    [/\bMeu nome e \*?Light\*?\b/gi, "Meu nome é Aizen"],
-    [/\bSou o \*?Light\*?\b/gi, "Sou o Aizen"],
-    [/\bSou \*?Light\*?\b/gi, "Sou Aizen"],
+    [/\bEu sou o\s+\*?Light\*?/gi, "Eu sou o Aizen"],
+    [/\bEu sou\s+\*?Light\*?/gi, "Eu sou Aizen"],
+    [/\bMeu nome é\s+\*?Light\*?/gi, "Meu nome é Aizen"],
+    [/\bMeu nome e\s+\*?Light\*?/gi, "Meu nome é Aizen"],
+    [/\bSou o\s+\*?Light\*?/gi, "Sou o Aizen"],
+    [/\bSou\s+\*?Light\*?/gi, "Sou Aizen"],
     [/\bLight, assistente virtual\b/gi, "Aizen, assistente virtual"],
     [/\bLight, assistente da\b/gi, "Aizen, assistente da"],
     [/\bLight, assistente do\b/gi, "Aizen, assistente do"],
@@ -68,6 +69,7 @@ function selfTest() {
     "🤖 Olá! Eu sou o Aizen, assistente da UniFatecie Polo Barreirinha e da Shekinah. 😊"
   );
   assert.equal(corrigirNomePublico("Meu nome é *Light*."), "Meu nome é Aizen.");
+  assert.equal(corrigirNomePublico("🤖 Oi! Eu sou o *Light* 😊 Como posso te ajudar?"), "🤖 Oi! Eu sou o Aizen 😊 Como posso te ajudar?");
   assert.equal(corrigirNomePublico("Light"), "Aizen");
   assert.equal(corrigirNomePublico("A palavra light significa luz."), "A palavra light significa luz.");
   console.log("✅ Self-test do guarda de saída Aizen aprovado.");
