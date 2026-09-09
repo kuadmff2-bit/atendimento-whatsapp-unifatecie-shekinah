@@ -13,10 +13,9 @@
   "engines": { "node": "22.x" },
   "dependencies": {
     "@wppconnect-team/wppconnect": "2.3.3",
+    "@wppconnect/wa-js": "4.6.0",
+    "@wppconnect/wa-version": "1.5.4829",
     "puppeteer": "24.43.1",
     "puppeteer-core": "24.43.1"
-  },
-  "overrides": {
-    "@wppconnect/wa-js": "4.6.1-alpha.0"
   }
 }
