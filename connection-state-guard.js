@@ -31,6 +31,17 @@ function patchLegacy(codigo = "") {
     );
   }
 
+  // Quando há um número configurado, usa o fluxo de vinculação por código do
+  // próprio WPPConnect em vez de depender de um QR que pode expirar/rotacionar.
+  const alvoCriacaoCliente =
+    '    const client = await wppconnect.create({\n      session: "atendimento-unifatecie-shekinah",';
+  if (out.includes(alvoCriacaoCliente)) {
+    const criacaoComCodigo = `    const numeroVinculacaoAizen = String(process.env.AIZEN_PHONE_NUMBER || \"\").trim();\n    if (numeroVinculacaoAizen) {\n      console.log(\"📱 Login do Aizen por código de vinculação ativado.\");\n    }\n\n    const client = await wppconnect.create({\n      session: \"atendimento-unifatecie-shekinah\",\n      ...(numeroVinculacaoAizen\n        ? {\n            phoneNumber: numeroVinculacaoAizen,\n            catchLinkCode: (codigo) => {\n              const linkCode = String(codigo || \"\").trim();\n              if (linkCode) console.log(\"🔗 AIZEN_LINK_CODE=\" + linkCode);\n            },\n          }\n        : {}),`;
+    out = out.replace(alvoCriacaoCliente, criacaoComCodigo);
+  } else {
+    console.warn("⚠️ Guarda de vinculação: criação do cliente WPPConnect não encontrada.");
+  }
+
   // Em algumas versões recentes do WhatsApp Web, sendText para @lid fica
   // pendurado sem erro. Para não deixar o Aizen mudo, tentamos primeiro o
   // número real @c.us já resolvido e, se necessário, usamos o @lid como fallback.
@@ -54,7 +65,7 @@ function patchLegacy(codigo = "") {
     console.warn("⚠️ Guarda LID: função responder não encontrada para ajuste.");
   }
 
-  console.log("✅ Inicialização estável do WhatsApp ativa: eventos livres e envio LID/@c.us com fallback.");
+  console.log("✅ Inicialização estável do WhatsApp ativa: eventos livres, vínculo por código e envio LID/@c.us com fallback.");
   return out;
 }
 
@@ -88,12 +99,16 @@ Module.prototype._compile = function (content, filename) {
 function selfTest() {
   const assert = require("assert");
 
-  const baseLegacy = `async function iniciar() {\n    const puppeteerOptions = { timeout: 120000 };\n      waitForLogin: true,\n      deviceSyncTimeout: 0,\n    whatsappConectado = true;\n  }\n\nasync function enviarTextoDireto(client, destino, mensagem) {\n  console.log(destino);\n  const resultado = await client.sendText(destino, mensagem);\n  return resultado;\n}\n\nasync function responder(client, destino, mensagem) {\n  await delay(900);\n  const destinoResolvido = await resolverDestino(client, destino);\n  return enviarTextoDireto(client, destinoResolvido, mensagem);\n}`;
+  const baseLegacy = `async function iniciar() {\n    const puppeteerOptions = { timeout: 120000 };\n    const client = await wppconnect.create({\n      session: \"atendimento-unifatecie-shekinah\",\n      waitForLogin: true,\n      deviceSyncTimeout: 0,\n    });\n    whatsappConectado = true;\n  }\n\nasync function enviarTextoDireto(client, destino, mensagem) {\n  console.log(destino);\n  const resultado = await client.sendText(destino, mensagem);\n  return resultado;\n}\n\nasync function responder(client, destino, mensagem) {\n  await delay(900);\n  const destinoResolvido = await resolverDestino(client, destino);\n  return enviarTextoDireto(client, destinoResolvido, mensagem);\n}`;
   const novoLegacy = patchLegacy(baseLegacy);
   assert.match(novoLegacy, /waitForLogin: true/);
   assert.doesNotMatch(novoLegacy, /waitForLogin: false/);
   assert.match(novoLegacy, /deviceSyncTimeout: 180000/);
   assert.match(novoLegacy, /protocolTimeout: 180000/);
+  assert.match(novoLegacy, /AIZEN_PHONE_NUMBER/);
+  assert.match(novoLegacy, /phoneNumber: numeroVinculacaoAizen/);
+  assert.match(novoLegacy, /catchLinkCode/);
+  assert.match(novoLegacy, /AIZEN_LINK_CODE=/);
   assert.match(novoLegacy, /Timeout de envio para/);
   assert.match(novoLegacy, /original\.endsWith\(\"@lid\"\)/);
   assert.match(novoLegacy, /resolverDestino\(client, original\)/);
@@ -106,7 +121,7 @@ function selfTest() {
   assert.match(novaIa, /slice\(-1200\)/);
   assert.doesNotMatch(novaIa, /if \(!resposta \|\| pareceSemInformacao/);
 
-  console.log("✅ Self-test da estabilidade WhatsApp/LID/IA aprovado.");
+  console.log("✅ Self-test da estabilidade WhatsApp/LID/vínculo por código/IA aprovado.");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
