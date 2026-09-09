@@ -96,6 +96,62 @@ Module.prototype._compile = function (content, filename) {
   return originalCompile.call(this, patched, filename);
 };
 
+// O login por código do WPPConnect 2.3.x usa um ciclo de eventos que ficou
+// preso no WhatsApp Web atual. O WA-JS já oferece uma chamada que retorna o
+// código diretamente; substituímos apenas esse método interno, mantendo todo o
+// restante da sessão do WPPConnect intacto.
+function instalarGeradorDiretoDeCodigo() {
+  try {
+    const moduloHost = require("@wppconnect-team/wppconnect/dist/api/layers/host.layer");
+    const HostLayer = moduloHost?.HostLayer || moduloHost?.default;
+    if (!HostLayer?.prototype) {
+      throw new Error("HostLayer não encontrado no WPPConnect instalado");
+    }
+
+    HostLayer.prototype.loginByCode = async function loginByCodeAizen(phone) {
+      const numero = String(phone || "").trim();
+      if (!numero) throw new Error("Número de vinculação do Aizen não informado");
+
+      console.log("🔗 Solicitando código de vinculação diretamente ao WA-JS...");
+      const codigo = await Promise.race([
+        this.page.evaluate(async (telefone) => {
+          const wpp = globalThis.WPP;
+          if (!wpp?.conn?.genLinkDeviceCodeForPhoneNumber) {
+            throw new Error("WA-JS não expôs genLinkDeviceCodeForPhoneNumber");
+          }
+          return await wpp.conn.genLinkDeviceCodeForPhoneNumber(telefone);
+        }, numero),
+        new Promise((_, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error("Tempo esgotado ao gerar o código de vinculação")),
+            45000
+          );
+          timer.unref?.();
+        }),
+      ]);
+
+      const linkCode = String(codigo || "").trim();
+      if (!linkCode) throw new Error("WhatsApp não retornou um código de vinculação");
+
+      if (typeof this.onLinkCode === "function") {
+        this.onLinkCode(linkCode);
+      } else if (typeof this.catchLinkCode === "function") {
+        this.catchLinkCode(linkCode);
+      }
+
+      return linkCode;
+    };
+
+    console.log("🧩 Gerador direto de código WA-JS instalado no HostLayer.");
+    return true;
+  } catch (error) {
+    console.warn("⚠️ Não foi possível instalar o gerador direto de código:", error?.message || error);
+    return false;
+  }
+}
+
+const geradorDiretoInstalado = instalarGeradorDiretoDeCodigo();
+
 function selfTest() {
   const assert = require("assert");
 
@@ -114,6 +170,7 @@ function selfTest() {
   assert.match(novoLegacy, /resolverDestino\(client, original\)/);
   assert.match(novoLegacy, /return enviarTextoDireto\(client, String\(destino/);
   assert.doesNotMatch(novoLegacy, /getConnectionState\(\)/);
+  assert.equal(typeof geradorDiretoInstalado, "boolean");
 
   const baseIa = `const LIMITE_HISTORICO = 24;\nconst mensagens = [\n    ...historico.slice(-LIMITE_HISTORICO),\n];\n  if (!resposta || pareceSemInformacao(resposta) || perguntaPodePrecisarDeWeb(texto)) {`;
   const novaIa = patchIaGroq(baseIa);
@@ -121,9 +178,14 @@ function selfTest() {
   assert.match(novaIa, /slice\(-1200\)/);
   assert.doesNotMatch(novaIa, /if \(!resposta \|\| pareceSemInformacao/);
 
-  console.log("✅ Self-test da estabilidade WhatsApp/LID/vínculo por código/IA aprovado.");
+  console.log("✅ Self-test da estabilidade WhatsApp/LID/vínculo direto por código/IA aprovado.");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
 
-module.exports = { patchCodigo: patchLegacy, patchLegacy, patchIaGroq };
+module.exports = {
+  patchCodigo: patchLegacy,
+  patchLegacy,
+  patchIaGroq,
+  instalarGeradorDiretoDeCodigo,
+};
