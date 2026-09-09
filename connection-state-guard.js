@@ -8,6 +8,15 @@ function isLegacy(filename = "") {
 function patchCodigo(codigo = "") {
   let out = String(codigo);
 
+  // O WPPConnect 2.3.x pode ficar preso em waitForLogin()/isAuthenticated
+  // mesmo quando o WhatsApp já chegou em inChat. Não bloqueamos mais a
+  // inicialização nesse ponto: o client é devolvido, o onMessage é registrado
+  // imediatamente e o statusFind continua acompanhando autenticação/QR.
+  if (out.includes("      waitForLogin: true,")) {
+    out = out.replace("      waitForLogin: true,", "      waitForLogin: false,");
+    console.log("⚡ Inicialização não bloqueante do WhatsApp ativa (waitForLogin=false).");
+  }
+
   if (out.includes("      deviceSyncTimeout: 0,")) {
     out = out.replace("      deviceSyncTimeout: 0,", "      deviceSyncTimeout: 180000,");
   }
@@ -29,5 +38,17 @@ Module.prototype._compile = function (content, filename) {
   const patched = isLegacy(filename) ? patchCodigo(content) : content;
   return originalCompile.call(this, patched, filename);
 };
+
+function selfTest() {
+  const assert = require("assert");
+  const base = `async function iniciar() {\n      waitForLogin: true,\n      deviceSyncTimeout: 0,\n    whatsappConectado = true;\n  }`;
+  const novo = patchCodigo(base);
+  assert.match(novo, /waitForLogin: false/);
+  assert.doesNotMatch(novo, /waitForLogin: true/);
+  assert.match(novo, /deviceSyncTimeout: 180000/);
+  console.log("✅ Self-test da inicialização não bloqueante do WhatsApp aprovado.");
+}
+
+if (process.argv.includes("--self-test")) selfTest();
 
 module.exports = { patchCodigo };
