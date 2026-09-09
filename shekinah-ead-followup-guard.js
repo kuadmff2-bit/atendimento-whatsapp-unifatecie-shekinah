@@ -87,7 +87,15 @@ function marcarContexto(sessao = {}, cursoNome = "") {
   sessao.instituicao = "shekinah";
   sessao.assuntoAtual = "shekinah_ead";
   sessao.modalidadeShekinah = "ead";
-  if (cursoNome) sessao.eadCursoPromocional = cursoNome;
+  if (cursoNome) {
+    sessao.eadCursoPromocional = cursoNome;
+    if (!sessao.eadCursoAtual) sessao.eadCursoAtual = cursoNome;
+    sessao.curso = sessao.eadCursoAtual || cursoNome;
+    if (!sessao.memoriaLight || typeof sessao.memoriaLight !== "object") sessao.memoriaLight = {};
+    sessao.memoriaLight.cursoAtivo = sessao.eadCursoAtual || cursoNome;
+    sessao.memoriaLight.instituicao = "shekinah";
+    sessao.memoriaLight.modalidade = "ead";
+  }
   sessao.atualizadoEm = Date.now();
 }
 
@@ -98,6 +106,14 @@ function ehPerguntaTaxaMatricula(texto = "") {
     || /^(matricula|valor da matricula|taxa da matricula|taxa de matricula)$/.test(t);
 }
 
+function ehPedidoMatricula(texto = "") {
+  const t = norm(texto);
+  if (!t || ehPerguntaTaxaMatricula(texto)) return false;
+  return /\b(quero|queria|gostaria|desejo|vou|vamos|pode|podemos|pretendo)\b.{0,45}\b(matricul|inscrev|inscricao)\w*/.test(t)
+    || /\b(me matricular|fazer minha matricula|iniciar a matricula|comecar a matricula|realizar a matricula|fazer a inscricao|me inscrever)\b/.test(t)
+    || /^(matricular|matricular me|me matricular|quero matricula|quero me matricular|inscrever|me inscrever)$/.test(t);
+}
+
 function ehPedidoOutrosCursos(texto = "") {
   const t = norm(texto);
   return /\b(outro|outros|outra|outras)\b.*\b(curso|cursos|opcao|opcoes)\b/.test(t)
@@ -106,13 +122,49 @@ function ehPedidoOutrosCursos(texto = "") {
     || (/\b(curso|cursos)\b/.test(t) && /\b(disponivel|disponiveis|tem|oferece|oferecem)\b/.test(t) && /\b(qual|quais|outro|outros|mais)\b/.test(t));
 }
 
+function cursoAtualDaSessao(sessao = {}) {
+  const candidatos = [
+    sessao?.eadCursoAtual,
+    sessao?.eadCursoPromocional,
+    sessao?.memoriaLight?.cursoAtivo,
+    sessao?.curso,
+  ];
+  return String(candidatos.find((c) => typeof c === "string" && c.trim()) || "").trim();
+}
+
 function nomeCursoDoContexto(sessao = {}, texto = "") {
   const explicito = cursoPromocionalMencionado(texto);
   if (explicito) return explicito.nome;
-  if (sessao?.eadCursoPromocional) return String(sessao.eadCursoPromocional);
+  const atual = cursoAtualDaSessao(sessao);
+  if (atual) return atual;
   const visual = cursoPromocionalMencionado(textoVisual(sessao));
   if (visual) return visual.nome;
   return "";
+}
+
+function iniciarMatriculaCursoAtual(sessao = {}, cursoNome = "") {
+  const curso = String(cursoNome || cursoAtualDaSessao(sessao)).trim();
+  if (!curso) return false;
+
+  sessao.instituicao = "shekinah";
+  sessao.modalidadeShekinah = "ead";
+  sessao.assuntoAtual = "shekinah_ead";
+  sessao.matriculaShekinahEad = true;
+  sessao.eadCursoAtual = curso;
+  sessao.curso = curso;
+  sessao.dados = { ...(sessao.dados || {}), curso };
+  sessao.etapa = "shekinah_matricula_nome";
+  sessao.atendimentoHumano = false;
+  if (!sessao.memoriaLight || typeof sessao.memoriaLight !== "object") sessao.memoriaLight = {};
+  sessao.memoriaLight.cursoAtivo = curso;
+  sessao.memoriaLight.instituicao = "shekinah";
+  sessao.memoriaLight.modalidade = "ead";
+  sessao.atualizadoEm = Date.now();
+  return true;
+}
+
+function mensagemInicioMatricula(cursoNome = "") {
+  return `📝 Certo! Vamos iniciar sua matrícula no curso *${cursoNome} — EAD Shekinah*.\n\nVou pedir os dados necessários, um de cada vez.\n\n👤 Informe o *nome completo* do aluno.\n\n❌ Se quiser cancelar este atendimento, digite *cancelar*.`;
 }
 
 function respostaTaxaMatricula(cursoNome = "") {
@@ -204,6 +256,14 @@ async function tentarFollowupEad(args = {}) {
 
   marcarContexto(sessao, curso);
 
+  if (ehPedidoMatricula(textoOriginal)) {
+    const cursoSelecionado = cursoAtualDaSessao(sessao);
+    if (cursoSelecionado && iniciarMatriculaCursoAtual(sessao, cursoSelecionado)) {
+      await responder(client, msg.from, mensagemInicioMatricula(cursoSelecionado));
+      return true;
+    }
+  }
+
   if (ehPerguntaTaxaMatricula(textoOriginal)) {
     await responder(client, msg.from, respostaTaxaMatricula(curso));
     return true;
@@ -231,6 +291,9 @@ function selfTest() {
   const assert = require("assert");
   assert.equal(ehPerguntaTaxaMatricula("Quanto a matrícula para o curso de auxiliar infantil?"), true);
   assert.equal(ehPerguntaTaxaMatricula("Quero me matricular"), false);
+  assert.equal(ehPedidoMatricula("Quero me matricular"), true);
+  assert.equal(ehPedidoMatricula("Gostaria de me inscrever"), true);
+  assert.equal(ehPedidoMatricula("Quanto custa a matrícula?"), false);
   assert.equal(ehPedidoOutrosCursos("Qual outro curso que tem disponível?"), true);
   assert.equal(ehPedidoOutrosCursos("Tem mais cursos?"), true);
   assert.equal(cursoPromocionalMencionado("auxiliar infantil")?.nome, "Auxiliar de Classe na Educação Infantil");
@@ -238,6 +301,20 @@ function selfTest() {
   assert.equal(contextoVisualEad({ visaoUltima: { resumo: "Banner Shekinah 100% EAD Operador de Caixa" } }), true);
   assert.match(respostaTaxaMatricula("Auxiliar de Classe na Educação Infantil"), /R\$ 0,00/);
   assert.match(respostaTaxaMatricula("Auxiliar de Classe na Educação Infantil"), /sem taxa/i);
+
+  const sessaoMatricula = {
+    instituicao: "shekinah",
+    modalidadeShekinah: "ead",
+    assuntoAtual: "shekinah_ead",
+    eadCursoAtual: "Auxiliar de Creche",
+  };
+  assert.equal(cursoAtualDaSessao(sessaoMatricula), "Auxiliar de Creche");
+  assert.equal(iniciarMatriculaCursoAtual(sessaoMatricula), true);
+  assert.equal(sessaoMatricula.etapa, "shekinah_matricula_nome");
+  assert.equal(sessaoMatricula.dados.curso, "Auxiliar de Creche");
+  assert.equal(sessaoMatricula.matriculaShekinahEad, true);
+  assert.match(mensagemInicioMatricula("Auxiliar de Creche"), /Auxiliar de Creche/);
+
   const selecionados = selecionarDestaques([
     { nome: "Operador de Caixa", status: "Ativo" },
     { nome: "Auxiliar de Creche", status: "Ativo" },
@@ -256,7 +333,11 @@ module.exports = {
   contextoVisualEad,
   contextoEad,
   ehPerguntaTaxaMatricula,
+  ehPedidoMatricula,
   ehPedidoOutrosCursos,
+  cursoAtualDaSessao,
+  iniciarMatriculaCursoAtual,
+  mensagemInicioMatricula,
   respostaTaxaMatricula,
   selecionarDestaques,
   tentarFollowupEad,
