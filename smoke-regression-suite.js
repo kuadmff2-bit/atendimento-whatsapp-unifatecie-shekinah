@@ -52,6 +52,7 @@ function mockArgs(textoOriginal, sessao = {}) {
 }
 
 async function run() {
+  check("destino fixo do suporte UniFatecie", () => assert.equal(suporte.destinoSuporteUnifatecie(), "559291572214@c.us"));
   check("portal detectado", () => assert.equal(conversa.pedidoSuportePortal("Estou com um problema no meu portal"), true));
   check("alunonet detectado", () => assert.equal(conversa.pedidoSuportePortal("Não consigo entrar no AlunoNet"), true));
   check("curso não é portal", () => assert.equal(conversa.pedidoSuportePortal("Qual o valor do curso de Administração?"), false));
@@ -115,9 +116,10 @@ async function run() {
     const handled = await suporte.tentarEncaminharSuporte(a2);
     assert.equal(handled, true);
     assert.equal(sessao.etapa, "atendimento_humano");
-    assert.match(a2.enviadas[0].texto, /Já já um atendente/i);
+    assert.match(a2.enviadas[0].texto, /atendimento da UniFatecie|responsável recebeu/i);
     assert.doesNotMatch(a2.enviadas[0].texto, /30 minutos/i);
     assert.equal(a2.admin.length, 1);
+    assert.equal(a2.admin[0].destino, "559291572214@c.us");
   });
 
   check("frase financeira sem números é reconhecida", () => assert.equal(suporte.pedidoPagamentoNaoCompensado("Eu paguei uma mensalidade mas ela continua aberta pra eu pagar"), true));
@@ -146,9 +148,10 @@ async function run() {
     const handled = await suporte.tentarEncaminharSuporte(a3);
     assert.equal(handled, true);
     assert.equal(sessao.etapa, "atendimento_humano");
-    assert.match(a3.enviadas[0].texto, /Já já um atendente/i);
+    assert.match(a3.enviadas[0].texto, /atendimento da UniFatecie|responsável recebeu/i);
     assert.doesNotMatch(a3.enviadas[0].texto, /30 minutos/i);
     assert.equal(a3.admin.length, 1);
+    assert.equal(a3.admin[0].destino, "559291572214@c.us");
   });
 
   await checkAsync("encerrar tem prioridade em suporte", async () => {
