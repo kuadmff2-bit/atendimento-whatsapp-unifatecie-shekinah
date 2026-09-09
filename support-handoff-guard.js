@@ -1,6 +1,10 @@
 const Module = require("module");
 const originalLoad = Module._load;
 
+// Número secundário oficial para receber todos os casos de suporte da UniFatecie.
+// Mantemos fixo aqui para não depender do BOT_ADMIN_PHONE, que pode ser usado por outros fluxos.
+const UNIFATECIE_SUPPORT_NUMBER = "559291572214";
+
 function norm(texto = "") {
   return String(texto || "")
     .toLowerCase()
@@ -11,9 +15,8 @@ function norm(texto = "") {
     .trim();
 }
 
-function destinoAdmin() {
-  const numero = String(process.env.BOT_ADMIN_PHONE || "").replace(/\D/g, "");
-  return numero ? `${numero}@c.us` : "";
+function destinoSuporteUnifatecie() {
+  return `${UNIFATECIE_SUPPORT_NUMBER}@c.us`;
 }
 
 function nomeContato(msg = {}) {
@@ -137,7 +140,7 @@ function juntarParcial(anterior, atual) {
 }
 
 async function notificarAtendente(client, msg, problema, informacoes, titulo = "SUPORTE — UNIFATECIE") {
-  const destino = destinoAdmin();
+  const destino = destinoSuporteUnifatecie();
   if (!destino || typeof client?.sendText !== "function") return false;
   const aviso = [
     `🔔 *${titulo}*`,
@@ -149,13 +152,14 @@ async function notificarAtendente(client, msg, problema, informacoes, titulo = "
     "📋 *Informações enviadas pelo aluno:*",
     removerSenhaDeclarada(informacoes || "").slice(0, 1800),
     "",
-    "Assuma a conversa manualmente quando puder."
+    "Este caso veio do Light. Faça o atendimento pelo número oficial/atendente da UniFatecie."
   ].join("\n");
   try {
     await client.sendText(destino, aviso);
+    console.log(`📨 Suporte UniFatecie encaminhado para ${UNIFATECIE_SUPPORT_NUMBER}.`);
     return true;
   } catch (error) {
-    console.warn("⚠️ Não foi possível encaminhar o suporte ao atendente:", error?.message || error);
+    console.warn("⚠️ Não foi possível encaminhar o suporte UniFatecie ao número secundário:", error?.message || error);
     return false;
   }
 }
@@ -180,8 +184,8 @@ async function concluirEncaminhamento({ client, msg, sessao, responder, problema
     client,
     msg.from,
     notificou
-      ? "✅ Recebi suas informações e já passei tudo para o atendente da UniFatecie. 👨‍💼\n\nJá já um atendente vai entrar em contato por aqui para resolver seu problema."
-      : "✅ Recebi suas informações e deixei seu caso para atendimento. 👨‍💼\n\nJá já um atendente vai entrar em contato por aqui."
+      ? "✅ Recebi suas informações e já passei tudo para o atendimento da UniFatecie. 👨‍💼\n\nO responsável recebeu seu caso e poderá entrar em contato com você para resolver o problema."
+      : "✅ Recebi suas informações e deixei seu caso separado para atendimento. 👨‍💼\n\nSe precisar, um responsável da UniFatecie poderá entrar em contato com você."
   );
   return true;
 }
@@ -302,6 +306,7 @@ Module._load = function (request, parent, isMain) {
 
 function selfTest() {
   const assert = require("assert");
+  assert.equal(destinoSuporteUnifatecie(), "559291572214@c.us");
   assert.equal(pedidoPagamentoNaoCompensado("Eu paguei uma mensalidade mas ela continua aberta pra eu pagar"), true);
   assert.equal(pareceDadosFinanceiros("278732, 07792688224, eu nao sei o dia exato, paguei 112,20"), true);
   assert.equal(pareceDadosFinanceiros("07792688224"), false);
@@ -312,12 +317,14 @@ function selfTest() {
   assert.equal(pediuEncerrarSuporte("Encerrar atendimento"), true);
   assert.equal(pediuEncerrarSuporte("nao quero encerrar"), false);
   assert.equal(removerSenhaDeclarada("minha senha: abc123").includes("abc123"), false);
-  console.log("✅ Self-test do encaminhamento de suporte aprovado.");
+  console.log("✅ Self-test do encaminhamento de suporte aprovado para o número secundário UniFatecie.");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
 
 module.exports = {
+  UNIFATECIE_SUPPORT_NUMBER,
+  destinoSuporteUnifatecie,
   camposFinanceiros,
   pareceDadosFinanceiros,
   pedidoPagamentoNaoCompensado,
