@@ -31,11 +31,22 @@ function patchLegacy(codigo = "") {
     );
   }
 
-  // Conversas privadas podem chegar como @lid. O chat que originou a mensagem
-  // deve ser respondido usando o MESMO identificador; converter para @c.us
-  // antes do sendText pode deixar o envio pendurado nas versões atuais do WA.
+  // Em algumas versões recentes do WhatsApp Web, sendText para @lid fica
+  // pendurado sem erro. Para não deixar o Aizen mudo, tentamos primeiro o
+  // número real @c.us já resolvido e, se necessário, usamos o @lid como fallback.
+  const regexEnviarDireto = /async function enviarTextoDireto\(client, destino, mensagem\) \{[\s\S]*?\n\}/;
+  const enviarDiretoNovo = `async function enviarTextoDireto(client, destino, mensagem) {\n  const original = String(destino || \"\");\n  const alvos = [];\n\n  if (original.endsWith(\"@lid\")) {\n    try {\n      const resolvido = await resolverDestino(client, original);\n      if (resolvido && resolvido !== original) alvos.push(resolvido);\n    } catch (error) {\n      console.warn(\"⚠️ Não foi possível resolver o LID antes do envio:\", error?.message || error);\n    }\n  }\n\n  alvos.push(original);\n  const unicos = [...new Set(alvos.filter(Boolean))];\n  let ultimoErro = null;\n\n  for (const alvo of unicos) {\n    console.log(\"📤 Enviando resposta para \" + alvo + \"...\");\n    try {\n      const resultado = await Promise.race([\n        client.sendText(alvo, mensagem),\n        new Promise((_, reject) => {\n          const timer = setTimeout(() => reject(new Error(\"Timeout de envio para \" + alvo)), 8000);\n          timer.unref?.();\n        }),\n      ]);\n\n      if (!resultado) throw new Error(\"O WhatsApp não confirmou o envio da resposta.\");\n      console.log(\"✅ Resposta enviada para \" + alvo + \".\");\n      return resultado;\n    } catch (error) {\n      ultimoErro = error;\n      console.warn(\"⚠️ Falha ao enviar para \" + alvo + \"; tentando rota alternativa:\", error?.message || error);\n    }\n  }\n\n  throw ultimoErro || new Error(\"Não foi possível enviar a resposta pelo WhatsApp.\");\n}`;
+
+  if (regexEnviarDireto.test(out)) {
+    out = out.replace(regexEnviarDireto, enviarDiretoNovo);
+  } else {
+    console.warn("⚠️ Guarda de envio: função enviarTextoDireto não encontrada para ajuste.");
+  }
+
+  // Conversas privadas podem chegar como @lid. Mantemos o identificador original
+  // até a camada de envio, que agora sabe tentar @c.us e @lid com timeout/fallback.
   const regexResponder = /async function responder\(client, destino, mensagem\) \{[\s\S]*?\n\}/;
-  const responderNovo = `async function responder(client, destino, mensagem) {\n  await delay(350);\n\n  const destinoOriginal = String(destino || \"\");\n  const destinoResposta = destinoOriginal.endsWith(\"@lid\")\n    ? destinoOriginal\n    : await resolverDestino(client, destinoOriginal);\n\n  if (destinoOriginal.endsWith(\"@lid\")) {\n    console.log(\"📨 Respondendo diretamente ao chat LID: \" + destinoResposta);\n  }\n\n  return enviarTextoDireto(client, destinoResposta, mensagem);\n}`;
+  const responderNovo = `async function responder(client, destino, mensagem) {\n  await delay(350);\n  return enviarTextoDireto(client, String(destino || \"\"), mensagem);\n}`;
 
   if (regexResponder.test(out)) {
     out = out.replace(regexResponder, responderNovo);
@@ -43,7 +54,7 @@ function patchLegacy(codigo = "") {
     console.warn("⚠️ Guarda LID: função responder não encontrada para ajuste.");
   }
 
-  console.log("✅ Inicialização estável do WhatsApp ativa: eventos livres e respostas LID diretas.");
+  console.log("✅ Inicialização estável do WhatsApp ativa: eventos livres e envio LID/@c.us com fallback.");
   return out;
 }
 
@@ -77,14 +88,16 @@ Module.prototype._compile = function (content, filename) {
 function selfTest() {
   const assert = require("assert");
 
-  const baseLegacy = `async function iniciar() {\n    const puppeteerOptions = { timeout: 120000 };\n      waitForLogin: true,\n      deviceSyncTimeout: 0,\n    whatsappConectado = true;\n  }\n\nasync function responder(client, destino, mensagem) {\n  await delay(900);\n  const destinoResolvido = await resolverDestino(client, destino);\n  return enviarTextoDireto(client, destinoResolvido, mensagem);\n}`;
+  const baseLegacy = `async function iniciar() {\n    const puppeteerOptions = { timeout: 120000 };\n      waitForLogin: true,\n      deviceSyncTimeout: 0,\n    whatsappConectado = true;\n  }\n\nasync function enviarTextoDireto(client, destino, mensagem) {\n  console.log(destino);\n  const resultado = await client.sendText(destino, mensagem);\n  return resultado;\n}\n\nasync function responder(client, destino, mensagem) {\n  await delay(900);\n  const destinoResolvido = await resolverDestino(client, destino);\n  return enviarTextoDireto(client, destinoResolvido, mensagem);\n}`;
   const novoLegacy = patchLegacy(baseLegacy);
   assert.match(novoLegacy, /waitForLogin: true/);
   assert.doesNotMatch(novoLegacy, /waitForLogin: false/);
   assert.match(novoLegacy, /deviceSyncTimeout: 180000/);
   assert.match(novoLegacy, /protocolTimeout: 180000/);
-  assert.match(novoLegacy, /endsWith\(\"@lid\"\)/);
-  assert.match(novoLegacy, /Respondendo diretamente ao chat LID/);
+  assert.match(novoLegacy, /Timeout de envio para/);
+  assert.match(novoLegacy, /original\.endsWith\(\"@lid\"\)/);
+  assert.match(novoLegacy, /resolverDestino\(client, original\)/);
+  assert.match(novoLegacy, /return enviarTextoDireto\(client, String\(destino/);
   assert.doesNotMatch(novoLegacy, /getConnectionState\(\)/);
 
   const baseIa = `const LIMITE_HISTORICO = 24;\nconst mensagens = [\n    ...historico.slice(-LIMITE_HISTORICO),\n];\n  if (!resposta || pareceSemInformacao(resposta) || perguntaPodePrecisarDeWeb(texto)) {`;
