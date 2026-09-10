@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const Module = require("module");
 const conversa = require("./conversation-core-ext");
+const { RESPOSTA_CRIADOR } = require("./aizen-identity");
 
 const NOME_PUBLICO = "Aizen";
 const CAMINHO_INDEX = path.resolve(__dirname, "index.js");
@@ -22,6 +23,11 @@ function ehPerguntaIdentidade(texto = "") {
   return /^(qual (e )?(o )?seu nome|como voce se chama|quem e voce|quem voce e|seu nome|nome|qual seu nome|quem e vc|quem vc e)$/.test(t);
 }
 
+function ehPerguntaCriador(texto = "") {
+  const t = normalizar(texto);
+  return /^(quem (te )?(criou|fez|desenvolveu|programou)|quem criou voce|quem fez voce|quem desenvolveu voce|quem programou voce|quem e (o )?seu criador|qual (e )?(o )?seu criador|quem esta por tras de voce|quem te inventou|quem inventou voce)$/.test(t);
+}
+
 function ehSaudacao(texto = "") {
   const t = normalizar(texto);
   return /^(oi+|ola+|opa+|opam|alo+|ei+|e ai|hey+|hello|salve|bom dia|boa tarde|boa noite)$/.test(t);
@@ -29,6 +35,10 @@ function ehSaudacao(texto = "") {
 
 function mensagemIdentidade() {
   return "🤖 Meu nome é *Aizen*. Sou o assistente virtual da *UniFatecie Polo Barreirinha* e do *Centro Educacional Shekinah*. 😊";
+}
+
+function mensagemCriador() {
+  return `🤖 ${RESPOSTA_CRIADOR}`;
 }
 
 function mensagemSaudacao() {
@@ -86,6 +96,11 @@ if (!conversa.__aizenConversationGuard && typeof conversa.tentarConversaNatural 
       args.client &&
       args.msg?.from
     ) {
+      if (ehPerguntaCriador(texto)) {
+        await args.responder(args.client, args.msg.from, mensagemCriador());
+        return true;
+      }
+
       if (ehPerguntaIdentidade(texto)) {
         await args.responder(args.client, args.msg.from, mensagemIdentidade());
         return true;
@@ -101,17 +116,23 @@ if (!conversa.__aizenConversationGuard && typeof conversa.tentarConversaNatural 
   };
 
   Object.defineProperty(conversa, "__aizenConversationGuard", { value: true });
-  console.log("🗣️ Conversa natural sincronizada com a identidade Aizen.");
+  console.log("🗣️ Conversa natural sincronizada com a identidade Aizen, incluindo autoria.");
 }
 
 function selfTest() {
   const assert = require("assert");
   assert.equal(ehPerguntaIdentidade("Qual seu nome?"), true);
   assert.equal(ehPerguntaIdentidade("quem é você?"), true);
+  assert.equal(ehPerguntaCriador("Quem criou você?"), true);
+  assert.equal(ehPerguntaCriador("Quem fez você?"), true);
+  assert.equal(ehPerguntaCriador("Quem te programou?"), true);
+  assert.equal(ehPerguntaCriador("Quem é seu criador?"), true);
   assert.equal(ehSaudacao("Boa noite"), true);
   assert.equal(ehSaudacao("Opam"), true);
   assert.match(mensagemIdentidade(), /Aizen/);
   assert.doesNotMatch(mensagemIdentidade(), /Light/);
+  assert.equal(mensagemCriador(), `🤖 ${RESPOSTA_CRIADOR}`);
+  assert.match(mensagemCriador(), /Carlos/);
   assert.match(mensagemSaudacao(), /Aizen/);
 
   const fonteTeste = `await responder(client,msg.from,"🤖 Eu sou o *Light*, assistente virtual da *UniFatecie Polo Barreirinha* e do *Centro Educacional Shekinah*. 😊");\nawait responder(client,msg.from,"🤖 Olá! Eu sou o *Light*, assistente da *UniFatecie Polo Barreirinha* e da *Shekinah*. 😊 Como posso ajudar?");`;
@@ -119,7 +140,7 @@ function selfTest() {
   assert.doesNotMatch(fonteCorrigida, /Eu sou o \*Light\*/);
   assert.match(fonteCorrigida, /Eu sou o \*Aizen\*/);
 
-  console.log("✅ Self-test da conversa Aizen aprovado, incluindo o roteador principal.");
+  console.log("✅ Self-test da conversa Aizen aprovado, incluindo identidade, autoria e roteador principal.");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
@@ -128,8 +149,10 @@ module.exports = {
   NOME_PUBLICO,
   normalizar,
   ehPerguntaIdentidade,
+  ehPerguntaCriador,
   ehSaudacao,
   mensagemIdentidade,
+  mensagemCriador,
   mensagemSaudacao,
   corrigirFonteIndexAizen,
   instalarProtecaoFonteIndex,
