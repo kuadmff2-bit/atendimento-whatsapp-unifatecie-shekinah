@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const wppconnect = require("@wppconnect-team/wppconnect");
+const Module = require("module");
 
 const RECUPERAR = String(process.env.AIZEN_AUTH_RECOVERY || "").trim() === "1";
 const NUMERO = String(process.env.AIZEN_PHONE_NUMBER || "").trim();
@@ -30,17 +30,47 @@ function prepararRecuperacao() {
   return true;
 }
 
+function patchLegacyParaVinculo(codigo = "") {
+  if (!RECUPERAR || !NUMERO) return String(codigo || "");
+  let out = String(codigo || "");
+
+  const alvo = '    const client = await wppconnect.create({\n      session: "atendimento-unifatecie-shekinah",';
+  if (!out.includes(alvo)) {
+    console.warn("⚠️ Recuperação: criação do cliente WPPConnect não encontrada no legacy-index.");
+    return out;
+  }
+
+  const substituto = `    const numeroRecuperacaoAizen = String(process.env.AIZEN_PHONE_NUMBER || \"\").trim();\n    console.log(\"📱 Recuperação do Aizen usando vínculo por número.\");\n\n    const client = await wppconnect.create({\n      session: \"atendimento-unifatecie-shekinah\",\n      phoneNumber: numeroRecuperacaoAizen,\n      catchLinkCode: (codigo) => {\n        const linkCode = String(codigo || \"\").trim();\n        if (linkCode) console.log(\"🔗 AIZEN_LINK_CODE=\" + linkCode);\n      },`;
+
+  return out.replace(alvo, substituto);
+}
+
+function instalarPatchDaCriacao() {
+  if (!RECUPERAR || !NUMERO || Module.__aizenAuthRecoveryCompile) return false;
+  const compileAnterior = Module.prototype._compile;
+
+  Module.prototype._compile = function (content, filename) {
+    const ehLegacy = /(?:^|[\\/])legacy-index\.js$/.test(String(filename || ""));
+    return compileAnterior.call(this, ehLegacy ? patchLegacyParaVinculo(content) : content, filename);
+  };
+
+  Object.defineProperty(Module, "__aizenAuthRecoveryCompile", { value: true });
+  console.log("🩺 Recuperação controlada da autenticação do Aizen ativada.");
+  return true;
+}
+
 function instalarGeradorDireto() {
   if (!RECUPERAR) return false;
   try {
     const moduloHost = require("@wppconnect-team/wppconnect/dist/api/layers/host.layer");
     const HostLayer = moduloHost?.HostLayer || moduloHost?.default;
-    if (!HostLayer?.prototype) return false;
+    if (!HostLayer?.prototype) throw new Error("HostLayer não encontrado");
 
     HostLayer.prototype.loginByCode = async function loginByCodeAizen(phone) {
       const numero = String(phone || "").trim();
       if (!numero) throw new Error("Número de vinculação não informado");
 
+      console.log("🔗 Solicitando código de vinculação diretamente ao WA-JS...");
       const codigo = await Promise.race([
         this.page.evaluate(async (telefone) => {
           const wpp = globalThis.WPP;
@@ -62,6 +92,7 @@ function instalarGeradorDireto() {
       return linkCode;
     };
 
+    console.log("🧩 Gerador direto de código do WhatsApp instalado para a recuperação.");
     return true;
   } catch (error) {
     console.warn("⚠️ Gerador direto de código indisponível:", error?.message || error);
@@ -69,44 +100,33 @@ function instalarGeradorDireto() {
   }
 }
 
-function instalarWrapperCreate() {
-  if (!RECUPERAR || !NUMERO) return false;
-  if (wppconnect.create?.__aizenAuthRecovery) return true;
-
-  const originalCreate = wppconnect.create.bind(wppconnect);
-  const createComRecuperacao = async function createComRecuperacao(config = {}) {
-    const anterior = config.catchLinkCode;
-    return originalCreate({
-      ...config,
-      phoneNumber: NUMERO,
-      catchLinkCode: (codigo) => {
-        const linkCode = String(codigo || "").trim();
-        if (linkCode) console.log("🔗 AIZEN_LINK_CODE=" + linkCode);
-        if (typeof anterior === "function") anterior(codigo);
-      },
-    });
-  };
-
-  Object.defineProperty(createComRecuperacao, "__aizenAuthRecovery", { value: true });
-  wppconnect.create = createComRecuperacao;
-  console.log("🩺 Recuperação controlada da autenticação do Aizen ativada.");
-  return true;
-}
-
 const preparado = prepararRecuperacao();
 if (preparado) {
+  instalarPatchDaCriacao();
   instalarGeradorDireto();
-  instalarWrapperCreate();
 }
 
 function selfTest() {
   const assert = require("assert");
-  assert.equal(typeof prepararRecuperacao, "function");
-  assert.equal(typeof instalarGeradorDireto, "function");
-  assert.equal(typeof instalarWrapperCreate, "function");
+  const antigoRecovery = process.env.AIZEN_AUTH_RECOVERY;
+  const antigoNumero = process.env.AIZEN_PHONE_NUMBER;
+  process.env.AIZEN_AUTH_RECOVERY = "1";
+  process.env.AIZEN_PHONE_NUMBER = "+5597991376123";
+
+  const base = '    const client = await wppconnect.create({\n      session: "atendimento-unifatecie-shekinah",\n      updatesLog: true,\n    });';
+  const novo = patchLegacyParaVinculo(base);
+  assert.match(novo, /phoneNumber: numeroRecuperacaoAizen/);
+  assert.match(novo, /catchLinkCode/);
+  assert.match(novo, /AIZEN_LINK_CODE=/);
+
+  if (antigoRecovery === undefined) delete process.env.AIZEN_AUTH_RECOVERY;
+  else process.env.AIZEN_AUTH_RECOVERY = antigoRecovery;
+  if (antigoNumero === undefined) delete process.env.AIZEN_PHONE_NUMBER;
+  else process.env.AIZEN_PHONE_NUMBER = antigoNumero;
+
   console.log("✅ Self-test da recuperação controlada de autenticação aprovado.");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
 
-module.exports = { prepararRecuperacao, instalarGeradorDireto, instalarWrapperCreate };
+module.exports = { prepararRecuperacao, patchLegacyParaVinculo, instalarPatchDaCriacao, instalarGeradorDireto };
